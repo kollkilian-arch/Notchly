@@ -1,11 +1,11 @@
 import SwiftUI
+import CoreAudio
 
 /// Debug helper: `Notchly --snapshot <dir>` renders the notch views to PNGs and exits.
 /// Handy for checking layout without screen-recording permission.
 @MainActor
 func renderSnapshots(to dir: String) {
-    let state = NotchState()
-    state.notchSize = NotchGeometry.find().size
+    let notchSize = NotchGeometry.find().size
     let media = MediaMonitor()
     let battery = BatteryMonitor()
     let calendar = CalendarMonitor()
@@ -14,6 +14,14 @@ func renderSnapshots(to dir: String) {
     let storeURL = URL(fileURLWithPath: dir).appendingPathComponent("test-shelf.json")
     try? FileManager.default.removeItem(at: storeURL)
     let shelf = ShelfStore(storeURL: storeURL)
+    let speakers = AudioOutputDevice(id: 1, uid: "preview-speakers", name: "MacBook Pro Speakers",
+                                     transport: kAudioDeviceTransportTypeBuiltIn)
+    let headphones = AudioOutputDevice(id: 2, uid: "preview-airpods", name: "AirPods Pro",
+                                       transport: kAudioDeviceTransportTypeBluetooth,
+                                       battery: AudioDeviceBattery(left: 84, right: 80, caseLevel: 92))
+    let displayAudio = AudioOutputDevice(id: 3, uid: "preview-display", name: "Studio Display",
+                                         transport: kAudioDeviceTransportTypeDisplayPort)
+    let audioPreview = AudioMonitor(preview: [headphones, speakers, displayAudio], selected: 2)
 
     // Usage: fixed preview states (no Keychain/network), plus a check of the JSON parser.
     let sample = #"{"five_hour":{"utilization":37.0,"resets_at":"2026-11-15T17:00:00.123456+00:00"},"seven_day":{"utilization":84,"resets_at":"2026-11-19T09:00:00Z"},"seven_day_opus":null}"#
@@ -390,6 +398,13 @@ func renderSnapshots(to dir: String) {
         ("closed-meeting-soon", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-now", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-with-timer", false, .home, limitsUsage, runningTimer),     // timer outranks the meeting
+        ("activities-menu-pinned", true, .timer, limitsUsage, runningTimer),
+        ("activities-selected-scores", false, .scores, limitsUsage, runningTimer),
+        ("activities-urgent-meeting", false, .home, limitsUsage, runningTimer),
+        ("audio-devices", true, .audio, limitsUsage, idleTimer),
+        ("audio-empty", true, .audio, limitsUsage, idleTimer),
+        ("audio-connected", false, .home, limitsUsage, idleTimer),
+        ("audio-disconnected", false, .home, limitsUsage, idleTimer),
         ("open-update-badge", true, .home, limitsUsage, idleTimer),
         ("scores-tab", true, .scores, limitsUsage, idleTimer),
         ("scores-nfl", true, .scores, limitsUsage, idleTimer),
@@ -406,18 +421,42 @@ func renderSnapshots(to dir: String) {
         ("closed-unlocking", false, .home, limitsUsage, runningTimer),
     ]
     for (name, open, tab, usage, timer) in variants {
+        let state = NotchState(defaults: nil)
+        state.notchSize = notchSize
         state.isOpen = open
         state.tab = tab
         Updater.shared.applyPreview(available: name == "open-update-badge" ? sampleRelease : nil)
-        let view = NotchRoot(state: state, media: media, battery: battery,
-                             calendar: ["calendar-join": meetingCalendar, "closed-meeting-soon": soonCalendar,
-                                        "closed-meeting-now": nowCalendar, "closed-meeting-with-timer": soonCalendar][name] ?? calendar,
-                             hud: hud,
-                             shelf: shelf, usage: usage, timer: timer,
-                             lock: name == "closed-locked" ? lockedLock : (name == "closed-unlocking" ? unlockingLock : idleLock),
-                             scores: ["scores-tab": scoresList, "scores-nfl": scoresNFL, "closed-nfl-home-ball": scoresNFL,
-                                      "closed-nfl-away-ball": scoresNFLAway, "closed-nfl-flash": scoresNFLFlash, "scores-empty": scoresNone, "closed-score-live": scoresLive,
-                                      "closed-score-flash": scoresFlash, "closed-score-with-meeting": scoresLive][name] ?? scoresNone)
+        let variantCalendar = name == "activities-urgent-meeting"
+            ? CalendarMonitor(preview: [event("Starting soon", startsIn: 0.75)])
+            : (["calendar-join": meetingCalendar, "closed-meeting-soon": soonCalendar,
+                "closed-meeting-now": nowCalendar, "closed-meeting-with-timer": soonCalendar][name] ?? calendar)
+        let variantLock = name == "closed-locked" ? lockedLock : (name == "closed-unlocking" ? unlockingLock : idleLock)
+        let variantScores = ["scores-tab": scoresList, "scores-nfl": scoresNFL, "closed-nfl-home-ball": scoresNFL,
+                             "closed-nfl-away-ball": scoresNFLAway, "closed-nfl-flash": scoresNFLFlash,
+                             "scores-empty": scoresNone, "closed-score-live": scoresLive,
+                             "closed-score-flash": scoresFlash, "closed-score-with-meeting": scoresLive,
+                             "activities-menu-pinned": scoresLive,
+                             "activities-selected-scores": scoresLive][name] ?? scoresNone
+        let variantAudio: AudioMonitor
+        if name == "audio-empty" {
+            variantAudio = AudioMonitor(preview: [], selected: 0)
+        } else if name == "audio-connected" || name == "audio-disconnected" {
+            variantAudio = AudioMonitor(preview: [headphones, speakers], selected: 2,
+                                        connection: AudioConnection(device: headphones,
+                                                                    kind: name == "audio-connected" ? .connected : .disconnected,
+                                                                    expiresAt: Date().addingTimeInterval(60)))
+        } else { variantAudio = audioPreview }
+        let input = ActivityInputs(media: media, battery: battery, calendar: variantCalendar, hud: hud,
+                                   timer: timer, lock: variantLock, scores: variantScores, audio: variantAudio)
+        var seed = input
+        if name == "activities-urgent-meeting" { seed.meetingID = nil; seed.meetingStart = nil }
+        state.updateActivities(seed)
+        if name == "activities-menu-pinned" || name == "activities-urgent-meeting" { state.toggleActivityPin(.timer) }
+        state.updateActivities(input)
+        if name == "activities-selected-scores" { state.selectActivity(.scores) }
+        let view = NotchRoot(state: state, media: media, battery: battery, calendar: variantCalendar,
+                             hud: hud, shelf: shelf, usage: usage, timer: timer,
+                             lock: variantLock, scores: variantScores, audio: variantAudio)
             .environment(\.colorScheme, .dark)
             .frame(width: width, height: 202)
             .background(Color(white: 0.55))

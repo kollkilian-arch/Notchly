@@ -11,14 +11,18 @@ A native SwiftUI/AppKit app, in the spirit of Alcove and Dynamic Island apps.
 | Tab | What it does |
 |---|---|
 | **Home** | Now Playing (Spotify and Apple Music) with artwork, seek bar and controls, plus your next calendar events with a **Join** button for video calls |
+| **Audio** | Choose the Mac's sound output and see reported Bluetooth device batteries, including individual earbuds and case |
 | **Shelf** | Park files, links, text snippets, and pasted screenshots; preview with Space and pin favourites |
 | **Timer** | Countdown with presets, pause, +1 min, chime |
 | **Scores** | Live scores, results and fixtures for favourite teams (Bundesliga, Champions League, NFL, NBA) |
 | **Usage** | A ring (in the tab bar) and bars showing how much of your Claude 5-hour and weekly limits you have used |
 
-**While the notch is closed** (highest priority first)
+**While the notch is closed**
 
-lock padlock · volume/brightness HUD · running timer · meeting reminder · live score · music (artwork + equalizer) · charging
+Shows a timer, meeting reminder, live score, music (artwork + equalizer), or charging status.
+Choose and pin an activity, cycle between active ones, or let automatic priorities decide.
+The lock padlock and volume/brightness HUD take priority; important timer and meeting alerts briefly
+interrupt your chosen activity.
 
 **Also:** replaces the macOS volume/brightness overlay, tints the progress bar with the album colours,
 trackpad haptics and subtle sounds, a padlock on the lock screen, and a settings window (gear icon in
@@ -36,6 +40,36 @@ Right-click an item for **Pin to Front / Unpin**, Preview, Copy, and Remove. Pin
 other items across launches. Original files remain references; pasted images and text previews are
 saved locally in `~/Library/Application Support/Notchly/shelf.assets/`. Removing a Shelf item never
 deletes an original file.
+
+### Choosing live activities
+
+Open the notch and use the **activity menu** beside the clock to select an active timer, meeting,
+live score, music, or charging status. Use **Next activity** to cycle, or hold **Option** while
+approaching the closed notch and click it to cycle without opening it. Selections last **20 seconds**,
+then return to your pin or automatic priorities. **Pin** keeps an activity preferred across launches;
+if it becomes inactive, another activity fills in until it returns. **Use Automatic Priorities** clears
+the pin and any temporary selection.
+
+Completed timers and meetings entering their last minute (and starting) get a **12-second** alert,
+then return to your selection. You can choose another activity to acknowledge an alert immediately.
+Automatic mode favours a meeting in the minute before and after its start over a running timer.
+Otherwise, its order is finished timer, active timer, meeting reminder, live score, music, then charging.
+Lock and volume/brightness indicators always take priority. Opening the notch takes you to the
+activity it is showing; dragging content in still opens the Shelf.
+
+### Audio devices
+
+Open the **headphones tab** to choose a sound output. The active output has a checkmark; changes made
+in macOS appear here too. Connecting or disconnecting an audio device, or changing the active output,
+shows a six-second notice in the closed notch. Open it during that notice to go straight to Audio.
+Lock, volume/brightness, and urgent timer/meeting alerts keep their priority. Connection notices can
+be switched off under **Settings → HUD → Audio devices**.
+
+Bluetooth batteries appear only when macOS reports them, with separate left, right, and case levels
+where available. Missing readings stay blank. Notchly reads the local `system_profiler` Bluetooth report
+in the background at most once per minute while Bluetooth audio outputs exist, and refreshes when a
+new one connects. The report's battery fields are best-effort and may lag or be absent. Output selection
+uses Core Audio; it doesn't change your microphone or the separate system alert output.
 
 ## Requirements
 

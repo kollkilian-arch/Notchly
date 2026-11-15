@@ -215,6 +215,7 @@ struct TabSwitcher: View {
     var body: some View {
         HStack(spacing: 2) {
             button(.home, symbol: "house.fill")
+            button(.audio, symbol: "headphones")
             button(.shelf, symbol: "tray.fill")
             button(.timer, symbol: "timer")
             if showScores { button(.scores, symbol: "sportscourt.fill") }

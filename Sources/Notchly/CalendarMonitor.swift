@@ -44,11 +44,13 @@ final class CalendarMonitor: ObservableObject {
     /// The meeting to hint at in the collapsed notch: it has a video-call link, starts within
     /// `leadMinutes` (or began at most 10 minutes ago, since people join late) and wasn't joined yet.
     func imminentMeeting(at now: Date = Date(), leadMinutes: Int) -> CalEvent? {
-        events.first { e in
+        let eligible = events.filter { e in
             guard e.meeting != nil, e.end > now, !joinedMeetings.contains(e.occurrenceKey) else { return false }
             let untilStart = e.start.timeIntervalSince(now)
             return untilStart <= Double(leadMinutes) * 60 && untilStart >= -10 * 60
         }
+        // A call starting now takes precedence over an older call the user hasn't marked joined.
+        return eligible.first { (-60...60).contains($0.start.timeIntervalSince(now)) } ?? eligible.first
     }
 
     /// The meeting shown in the collapsed notch, or nil (also when the user turned the indicator off).

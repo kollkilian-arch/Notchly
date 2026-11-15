@@ -2,23 +2,55 @@ import AppKit
 import SwiftUI
 import Combine
 
-enum NotchTab { case home, shelf, timer, scores, usage }
+enum NotchTab { case home, shelf, timer, scores, usage, audio }
 
 final class NotchState: ObservableObject {
     @Published var isOpen = false
     @Published var tab: NotchTab = .home
     @Published var notchSize = CGSize(width: 190, height: 32)
+    @Published private(set) var activity = ActivityPresentation()
+
+    private var priority: ActivityPriority
+    private var activityInputs = ActivityInputs()
+    private let defaults: UserDefaults?
+
+    init(defaults: UserDefaults? = .standard) {
+        self.defaults = defaults
+        priority = ActivityPriority(pinned: defaults?.string(forKey: Pref.pinnedActivity).flatMap(NotchActivity.init(rawValue:)))
+    }
+
+    func updateActivities(_ input: ActivityInputs, at now: Date = Date()) {
+        activityInputs = input
+        let updated = priority.resolve(input, at: now)
+        if activity != updated { activity = updated }
+    }
+
+    func selectActivity(_ kind: NotchActivity, at now: Date = Date()) {
+        priority.select(kind, from: activityInputs, at: now)
+        updateActivities(activityInputs, at: now)
+    }
+
+    func cycleActivity(at now: Date = Date()) {
+        priority.cycle(from: activityInputs, at: now)
+        updateActivities(activityInputs, at: now)
+    }
+
+    func toggleActivityPin(_ kind: NotchActivity, at now: Date = Date()) {
+        priority.togglePin(kind, from: activityInputs)
+        defaults?.set(priority.pinned?.rawValue ?? "", forKey: Pref.pinnedActivity)
+        updateActivities(activityInputs, at: now)
+    }
+
+    func useAutomaticActivities(at now: Date = Date()) {
+        priority.useAutomatic()
+        defaults?.set("", forKey: Pref.pinnedActivity)
+        updateActivities(activityInputs, at: now)
+    }
 
     static let openSize = CGSize(width: 610, height: 178)
     static let wing: CGFloat = 46
     static let timerWing: CGFloat = 60
     static let hudWing: CGFloat = 72
-
-    /// Width of each collapsed "wing". Priority: the lock icon, then a HUD, then a running timer,
-    /// then an upcoming meeting, then a live score, then the passive activities (music, charging).
-    static func wingWidth(lock: Bool, hud: Bool, timer: Bool, meeting: Bool, liveScore: Bool, activity: Bool) -> CGFloat {
-        lock ? wing : hud ? hudWing : (timer || meeting) ? timerWing : liveScore ? hudWing : activity ? wing : 0
-    }
 }
 
 /// Borderless panel that floats above the menu bar, right where the notch is.
@@ -35,6 +67,7 @@ final class NotchController {
     let battery = BatteryMonitor()
     let calendar = CalendarMonitor()
     let hud = HUDMonitor()
+    let audio = AudioMonitor()
     let shelf = ShelfStore()
     let usage = UsageMonitor()
     let timer = TimerModel()
@@ -53,16 +86,13 @@ final class NotchController {
     private var closeWork: DispatchWorkItem?
     private var openWork: DispatchWorkItem?
 
-    /// Width of each collapsed "wing" (live activity or HUD) next to the notch.
-    private var wingWidth: CGFloat {
-        let playing = Pref.bool(Pref.showMediaActivity) && media.isPlaying
-        let charging = Pref.bool(Pref.showChargingActivity) && battery.isCharging
-        return NotchState.wingWidth(lock: lock.indicatorVisible, hud: hud.event != nil,
-                                    timer: timer.isActive, meeting: calendar.indicatorMeeting != nil,
-                                    liveScore: scores.liveGameForNotch != nil, activity: playing || charging)
+    /// Keep hit testing and opening on the same activity decision as the views.
+    private func refreshActivities() {
+        state.updateActivities(ActivityInputs(media: media, battery: battery, calendar: calendar,
+                                             hud: hud, timer: timer, lock: lock, scores: scores, audio: audio))
     }
 
-    private var closedWidth: CGFloat { state.notchSize.width + wingWidth * 2 }
+    private var closedWidth: CGFloat { state.notchSize.width + state.activity.wingWidth * 2 }
 
     func start() {
         let panel = NotchPanel(
@@ -83,7 +113,7 @@ final class NotchController {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
 
-        let root = NotchRoot(state: state, media: media, battery: battery, calendar: calendar, hud: hud, shelf: shelf, usage: usage, timer: timer, lock: lock, scores: scores)
+        let root = NotchRoot(state: state, media: media, battery: battery, calendar: calendar, hud: hud, shelf: shelf, usage: usage, timer: timer, lock: lock, scores: scores, audio: audio)
         let host = NSHostingView(rootView: root)
         host.autoresizingMask = [.width, .height]
         panel.contentView = host
@@ -103,6 +133,7 @@ final class NotchController {
             .sink { [weak self] phase in
                 guard let self else { return }
                 let locked = phase == .locked
+                self.refreshActivities()
                 self.panel.alphaValue = (locked && !Pref.bool(Pref.lockIndicator)) ? 0 : 1
                 if locked {
                     ShelfPreview.shared.close()
@@ -130,10 +161,10 @@ final class NotchController {
 
         // Mouse monitors do not require any special permission.
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .leftMouseDown]
-        if let g = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] e in self?.handleMouse(e.type) }) {
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] e in self?.handleMouse(e) }) {
             monitors.append(g)
         }
-        if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in self?.handleMouse(e.type); return e }) {
+        if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in self?.handleMouse(e); return e }) {
             monitors.append(l)
         }
     }
@@ -171,13 +202,18 @@ final class NotchController {
 
     // MARK: Mouse handling
 
-    private func handleMouse(_ type: NSEvent.EventType) {
+    private func handleMouse(_ event: NSEvent) {
         guard screen != nil, lock.phase != .locked else { return }   // never open while locked
-        if type == .leftMouseDown {
+        refreshActivities()
+        if event.type == .leftMouseDown {
             dragPasteboardCount = NSPasteboard(name: .drag).changeCount
             // Clicking the notch opens it (the only way in when "open on hover" is off).
             if !state.isOpen, hotRect(dragging: false).contains(NSEvent.mouseLocation) {
-                openNotch(dragging: false)
+                if event.modifierFlags.contains(.option) {
+                    cancelOpen()
+                    state.cycleActivity()
+                }
+                else { openNotch(dragging: false) }
             }
             return
         }
@@ -206,6 +242,8 @@ final class NotchController {
         } else if hotRect(dragging: dragging).contains(p) {
             if dragging {
                 openNotch(dragging: true)
+            } else if NSEvent.modifierFlags.contains(.option) {
+                cancelOpen() // Keep the notch closed while Option-clicking through activities.
             } else if Pref.bool(Pref.openOnHover) {
                 let delay = Pref.double(Pref.hoverDelay)
                 if delay <= 0 {
@@ -224,8 +262,8 @@ final class NotchController {
     private func openNotch(dragging: Bool) {
         cancelClose()
         cancelOpen()
-        // A finished timer takes you straight to its "Time's up" screen.
-        state.tab = dragging ? .shelf : (timer.phase == .finished ? .timer : .home)
+        refreshActivities()
+        state.tab = dragging ? .shelf : state.activity.openingTab
         // Accept clicks and drops right away instead of waiting for the Combine hop above.
         panel.ignoresMouseEvents = false
         state.isOpen = true

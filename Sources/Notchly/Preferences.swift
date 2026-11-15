@@ -20,6 +20,8 @@ enum Pref {
     static let lockScreenVisible = "lockScreenVisible"         // applied at launch
     static let showMediaActivity = "showMediaActivity"
     static let showChargingActivity = "showChargingActivity"
+    static let pinnedActivity = "pinnedActivity"
+    static let showAudioActivity = "showAudioActivity"
 
     // Home tab
     static let enableSpotify = "enableSpotify"
@@ -56,6 +58,8 @@ enum Pref {
             lockScreenVisible: true,
             showMediaActivity: true,
             showChargingActivity: true,
+            pinnedActivity: "",
+            showAudioActivity: true,
             enableSpotify: true,
             enableMusic: true,
             showCalendar: true,

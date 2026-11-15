@@ -473,9 +473,17 @@ private struct HUDSettings: View {
     @AppStorage(Pref.hudVolume) private var volume = true
     @AppStorage(Pref.hudBrightness) private var brightness = true
     @AppStorage(Pref.hudDuration) private var duration = 1.4
+    @AppStorage(Pref.showAudioActivity) private var audioConnections = true
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Show audio device connections in the notch", isOn: $audioConnections)
+            } header: {
+                Text("Audio devices")
+            } footer: {
+                Text("Use the headphones tab to choose a sound output and see available device battery levels.")
+            }
             Section {
                 Toggle("Show volume in the notch", isOn: $volume)
                 Toggle("Show brightness in the notch", isOn: $brightness)
