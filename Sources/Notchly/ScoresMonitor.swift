@@ -50,6 +50,16 @@ struct Game: Identifiable, Equatable {
     let detail: String
     let home: Side
     let away: Side
+    /// American football only, while the game is live.
+    var situation: Situation? = nil
+
+    /// Down, distance and field position, e.g. "1st & 10 at NE 25".
+    struct Situation: Equatable {
+        let text: String
+        /// Team id of the side with the ball.
+        let possessionTeamID: String?
+        let isRedZone: Bool
+    }
 
     func involves(_ team: FavoriteTeam) -> Bool {
         leagueID == team.leagueID && (home.teamID == team.teamID || away.teamID == team.teamID)
@@ -335,7 +345,20 @@ final class ScoresMonitor: ObservableObject, @unchecked Sendable {
         }
         guard let home = side("home"), let away = side("away") else { return nil }
         return Game(id: "\(league.id)/\(id)", leagueID: league.id, leagueName: league.name,
-                    start: start, state: state, detail: detail, home: home, away: away)
+                    start: start, state: state, detail: detail, home: home, away: away,
+                    situation: state == .live ? parseSituation(competition["situation"]) : nil)
+    }
+
+    /// "1st & 10 at NE 25" (falls back to the short form, then to just the spot).
+    private static func parseSituation(_ any: Any?) -> Game.Situation? {
+        guard let s = any as? [String: Any] else { return nil }
+        func text(_ key: String) -> String? {
+            guard let value = s[key] as? String, !value.isEmpty else { return nil }
+            return value
+        }
+        guard let line = text("downDistanceText") ?? text("shortDownDistanceText") ?? text("possessionText") else { return nil }
+        return Game.Situation(text: line, possessionTeamID: s["possession"] as? String,
+                              isRedZone: s["isRedZone"] as? Bool ?? false)
     }
 
     /// Scores are a string on the scoreboard ("2") and an object on schedules ({"displayValue": "2"}).

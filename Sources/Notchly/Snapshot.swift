@@ -114,14 +114,22 @@ func renderSnapshots(to dir: String) {
     {"events":[{"id":"2001","date":"2026-11-15T18:00Z","status":{"displayClock":"9:12","period":3,"type":{"state":"in","shortDetail":"9:12 - 3rd"}},
       "competitions":[{"competitors":[
         {"homeAway":"home","score":"17","team":{"id":"17","abbreviation":"NE","displayName":"New England Patriots","shortDisplayName":"Patriots"}},
-        {"homeAway":"away","score":"10","team":{"id":"8","abbreviation":"DET","displayName":"Detroit Lions","shortDisplayName":"Lions"}}]}]}]}
+        {"homeAway":"away","score":"10","team":{"id":"8","abbreviation":"DET","displayName":"Detroit Lions","shortDisplayName":"Lions"}}],
+       "situation":{"down":2,"yardLine":3,"distance":3,"downDistanceText":"2nd & Goal at DET 3","shortDownDistanceText":"2nd & Goal","possessionText":"DET 3","possession":"17","isRedZone":true}}]},
+     {"id":"2002","date":"2026-11-15T21:00Z","status":{"type":{"state":"post","shortDetail":"Final"}},"competitions":[{"competitors":[
+        {"homeAway":"home","score":"24","team":{"id":"1","abbreviation":"ATL","displayName":"Atlanta Falcons","shortDisplayName":"Falcons"}},
+        {"homeAway":"away","score":"20","team":{"id":"12","abbreviation":"KC","displayName":"Kansas City Chiefs","shortDisplayName":"Chiefs"}}],"situation":{"downDistanceText":"stale"}}]}]}
     """#
     let bundesliga = League.all[0], nflLeague = League.all[2]
     let sb = ScoresMonitor.parseScoreboard(Data(scoreboardJSON.utf8), league: bundesliga)
     let sched = ScoresMonitor.parseSchedule(Data(scheduleJSON.utf8), league: bundesliga)
     let nfl = ScoresMonitor.parseScoreboard(Data(nflJSON.utf8), league: nflLeague)
     var scoreFails: [String] = []
-    func check(_ name: String, _ ok: Bool) { if !ok { scoreFails.append(name) } }
+    var scoreChecks = 0
+    func check(_ name: String, _ ok: Bool) {
+        scoreChecks += 1
+        if !ok { scoreFails.append(name) }
+    }
     check("scoreboard parses 2 valid events, skips the broken one", sb.count == 2)
     check("live game: state + clock", sb.first?.state == .live && sb.first?.detail == "67'")
     check("live game: string scores 2-1", sb.first?.home.score == 2 && sb.first?.away.score == 1)
@@ -133,6 +141,11 @@ func renderSnapshots(to dir: String) {
     check("schedule: logos array fallback", sched.first?.home.logo != nil)
     check("'1. FC ' prefix dropped (UNI)", sched.first?.home.code == "UNI")
     check("NFL: abbreviation as code + clock", nfl.first?.home.code == "NE" && nfl.first?.detail == "9:12 - 3rd" && nfl.first?.state == .live)
+    let situation = nfl.first?.situation
+    check("NFL situation: down, distance and spot", situation?.text == "2nd & Goal at DET 3")
+    check("NFL situation: possession team id + red zone", situation?.possessionTeamID == "17" && situation?.isRedZone == true)
+    check("situation ignored on a finished game", nfl.last?.state == .final && nfl.last?.situation == nil)
+    check("no situation for soccer", sb.first?.situation == nil)
     check("start date parsed (UTC)", sb.first.map { Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "UTC")!, from: $0.start).hour } == 14)
 
     func g(_ id: String, _ state: Game.State, hoursFromNow h: Double, home: String = "132", away: String = "124") -> Game {
@@ -154,19 +167,21 @@ func renderSnapshots(to dir: String) {
     check("disabled league is ignored when there are no favourites", ScoresMonitor.select(scoreboard: [g("x", .live, hoursFromNow: -1)], schedules: [:], favorites: [], enabledLeagues: ["nba"]).isEmpty)
     check("max three games shown", pick([g("a", .live, hoursFromNow: -1, home: "1", away: "2"), g("b", .live, hoursFromNow: -1, home: "3", away: "4"), g("c", .live, hoursFromNow: -1, home: "5", away: "6"), g("d", .live, hoursFromNow: -1, home: "7", away: "8")], [], favs: []).count == 3)
     check("soccerCode: Eintracht Frankfurt → EIN, 'FC Köln' → KÖL", ScoresMonitor.soccerCode("Eintracht Frankfurt") == "EIN" && ScoresMonitor.soccerCode("FC Köln") == "KÖL")
-    print("scores: \(18 - scoreFails.count)/18 checks pass" + (scoreFails.isEmpty ? "" : " — FAILED: \(scoreFails)"))
+    print("scores: \(scoreChecks - scoreFails.count)/\(scoreChecks) checks pass" + (scoreFails.isEmpty ? "" : " — FAILED: \(scoreFails)"))
 
     // Optional live check against the real feed: NOTCHLY_LIVE_SCORES=1 (a handful of network requests).
     if ProcessInfo.processInfo.environment["NOTCHLY_LIVE_SCORES"] == "1" {
         let defaults = UserDefaults.standard
         defaults.set(ScoresPrefs.encode([FavoriteTeam(leagueID: "ger.1", teamID: "132", name: "Bayern Munich"),
-                                         FavoriteTeam(leagueID: "nba", teamID: "3", name: "New Orleans Pelicans")]), forKey: Pref.scoreFavorites)
+                                         FavoriteTeam(leagueID: "nba", teamID: "3", name: "New Orleans Pelicans"),
+                                         FavoriteTeam(leagueID: "nfl", teamID: "17", name: "New England Patriots")]), forKey: Pref.scoreFavorites)
         let live = ScoresMonitor()
         live.refresh(force: true)
         RunLoop.main.run(until: Date().addingTimeInterval(14))
         print("scores live: failed=\(live.failed) games=\(live.games.count) updated=\(live.updated != nil)")
         for game in live.games {
-            print("  \(game.leagueName): \(game.home.name) \(game.home.score.map(String.init) ?? "-") : \(game.away.score.map(String.init) ?? "-") \(game.away.name) [\(game.state), \(game.detail.isEmpty ? game.start.formatted() : game.detail)]")
+            print("  \(game.leagueName): \(game.home.name) \(game.home.score.map(String.init) ?? "-") : \(game.away.score.map(String.init) ?? "-") \(game.away.name) [\(game.state), \(game.detail.isEmpty ? game.start.formatted() : game.detail)]"
+                  + (game.situation.map { " situation: \($0.text) | ball: \($0.possessionTeamID ?? "?") | redzone: \($0.isRedZone)" } ?? ""))
         }
         defaults.removeObject(forKey: Pref.scoreFavorites)
     }
@@ -181,6 +196,19 @@ func renderSnapshots(to dir: String) {
                          state: .final, detail: "FT", home: side("598", "Union Berlin", "UNI", 3), away: side("127", "Hamburg", "HAM", 0))
     let nextGame = Game(id: "uefa/next", leagueID: "uefa.champions", leagueName: "Champions League", start: Date().addingTimeInterval(26 * 3600),
                         state: .upcoming, detail: "", home: side("86", "Real Madrid", "REA", nil), away: side("132", "Bayern Munich", "BAY", nil))
+    func nflSide(_ id: String, _ name: String, _ code: String, _ score: Int?) -> Game.Side {
+        Game.Side(teamID: id, name: name, code: code, score: score,
+                  logo: URL(string: "https://a.espncdn.com/i/teamlogos/nfl/500/\(code.lowercased()).png"))
+    }
+    let nflRedZone = Game(id: "nfl/1", leagueID: "nfl", leagueName: "NFL", start: Date().addingTimeInterval(-3000),
+                          state: .live, detail: "10:45 - 1st", home: nflSide("17", "Patriots", "NE", 10), away: nflSide("8", "Lions", "DET", 7),
+                          situation: Game.Situation(text: "2nd & Goal at DET 3", possessionTeamID: "17", isRedZone: true))
+    let nflMidfield = Game(id: "nfl/2", leagueID: "nfl", leagueName: "NFL", start: Date().addingTimeInterval(-6000),
+                           state: .live, detail: "4:12 - 3rd", home: nflSide("1", "Falcons", "ATL", 14), away: nflSide("12", "Chiefs", "KC", 21),
+                           situation: Game.Situation(text: "1st & 10 at KC 45", possessionTeamID: "12", isRedZone: false))
+    let nflFinal = Game(id: "nfl/3", leagueID: "nfl", leagueName: "NFL", start: Date().addingTimeInterval(-6 * 3600),
+                        state: .final, detail: "Final", home: nflSide("20", "Giants", "NYG", 17), away: nflSide("28", "Commanders", "WSH", 24))
+    let scoresNFL = ScoresMonitor(preview: [nflRedZone, nflMidfield, nflFinal], live: nflRedZone)
     let scoresList = ScoresMonitor(preview: [liveGame, finalGame, nextGame], live: liveGame)
     let scoresNone = ScoresMonitor(preview: [], live: nil)
     let scoresLive = ScoresMonitor(preview: [liveGame], live: liveGame)
@@ -315,6 +343,7 @@ func renderSnapshots(to dir: String) {
         ("closed-meeting-now", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-with-timer", false, .home, limitsUsage, runningTimer),     // timer outranks the meeting
         ("scores-tab", true, .scores, limitsUsage, idleTimer),
+        ("scores-nfl", true, .scores, limitsUsage, idleTimer),
         ("scores-empty", true, .scores, limitsUsage, idleTimer),
         ("closed-score-live", false, .home, limitsUsage, idleTimer),
         ("closed-score-flash", false, .home, limitsUsage, idleTimer),
@@ -333,7 +362,7 @@ func renderSnapshots(to dir: String) {
                              hud: hud,
                              shelf: shelf, usage: usage, timer: timer,
                              lock: name == "closed-locked" ? lockedLock : (name == "closed-unlocking" ? unlockingLock : idleLock),
-                             scores: ["scores-tab": scoresList, "scores-empty": scoresNone, "closed-score-live": scoresLive,
+                             scores: ["scores-tab": scoresList, "scores-nfl": scoresNFL, "scores-empty": scoresNone, "closed-score-live": scoresLive,
                                       "closed-score-flash": scoresFlash, "closed-score-with-meeting": scoresLive][name] ?? scoresNone)
             .environment(\.colorScheme, .dark)
             .frame(width: width, height: 202)

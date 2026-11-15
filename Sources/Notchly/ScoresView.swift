@@ -62,29 +62,54 @@ struct GameRow: View {
     var body: some View {
         HStack(spacing: 8) {
             TeamLogo(url: game.home.logo)
-            Text(game.home.name)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                Text(game.home.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                if hasBall(game.home) { PossessionBall() }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(scoreText)
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .frame(width: 78)
 
-            Text(game.away.name)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            HStack(spacing: 4) {
+                Spacer(minLength: 0)
+                if hasBall(game.away) { PossessionBall() }
+                Text(game.away.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
             TeamLogo(url: game.away.logo)
 
             VStack(alignment: .trailing, spacing: 1) {
                 statusLabel
-                Text(game.leagueName).font(.system(size: 9)).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+                secondaryLabel
             }
-            .frame(width: 96, alignment: .trailing)
+            .frame(width: 118, alignment: .trailing)
         }
         .frame(height: 30)
+    }
+
+    private func hasBall(_ side: Game.Side) -> Bool {
+        game.situation?.possessionTeamID == side.teamID
+    }
+
+    /// Under the clock: the down and field position for a live football game, else the league name.
+    @ViewBuilder private var secondaryLabel: some View {
+        if let situation = game.situation {
+            Text(situation.text)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(situation.isRedZone ? Color.orange : Color.white.opacity(0.6))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        } else {
+            Text(game.leagueName).font(.system(size: 9)).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+        }
     }
 
     private var scoreText: String {
@@ -120,6 +145,16 @@ struct GameRow: View {
             return "\(f.string(from: game.start)) \(time)"
         }
         return game.start.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+    }
+}
+
+/// Small football next to the team that has the ball.
+struct PossessionBall: View {
+    var body: some View {
+        Image(systemName: "football.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(Color(red: 0.76, green: 0.45, blue: 0.22))
+            .help("Has the ball")
     }
 }
 
