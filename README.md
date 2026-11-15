@@ -11,7 +11,7 @@ A native SwiftUI/AppKit app, in the spirit of Alcove and Dynamic Island apps.
 | Tab | What it does |
 |---|---|
 | **Home** | Now Playing (Spotify and Apple Music) with artwork, seek bar and controls, plus your next calendar events with a **Join** button for video calls |
-| **Shelf** | Drag files toward the notch to park them; drag them out again later |
+| **Shelf** | Park files, links, text snippets, and pasted screenshots; preview with Space and pin favourites |
 | **Timer** | Countdown with presets, pause, +1 min, chime |
 | **Scores** | Live scores, results and fixtures for favourite teams (Bundesliga, Champions League, NFL, NBA) |
 | **Usage** | A ring (in the tab bar) and bars showing how much of your Claude 5-hour and weekly limits you have used |
@@ -23,6 +23,19 @@ lock padlock · volume/brightness HUD · running timer · meeting reminder · li
 **Also:** replaces the macOS volume/brightness overlay, tints the progress bar with the album colours,
 trackpad haptics and subtle sounds, a padlock on the lock screen, and a settings window (gear icon in
 the notch, or the menu bar item).
+
+### Using the Shelf
+
+Drag files, web links, text, or images toward the notch to open the Shelf. Use **Paste** or **⌘V**
+in the Shelf to add clipboard content, including screenshots copied with **⌃⇧⌘4**.
+Click an item to select it, use **← / →** to move between items, and press **Space** to preview.
+Press **Space** or **Esc** in the preview window to close it. Double-click an item (or press **Return**)
+to open it. **⌘C** copies the selected item; dragging it out carries its file, link, or text.
+
+Right-click an item for **Pin to Front / Unpin**, Preview, Copy, and Remove. Pinned items stay before
+other items across launches. Original files remain references; pasted images and text previews are
+saved locally in `~/Library/Application Support/Notchly/shelf.assets/`. Removing a Shelf item never
+deletes an original file.
 
 ## Requirements
 

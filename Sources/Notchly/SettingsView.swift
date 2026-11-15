@@ -264,8 +264,8 @@ private struct NotchSettings: View {
                 Text("Opening")
             } footer: {
                 Text(openOnHover
-                     ? "Dragging files toward the notch always opens the shelf."
-                     : "With hover off, click the notch to open it. Dragging files toward it still opens the shelf.")
+                     ? "Dragging files, links, text, or images toward the notch always opens the shelf."
+                     : "With hover off, click the notch to open it. Dragging files, links, text, or images toward it still opens the shelf.")
             }
 
             Section("While the notch is closed") {

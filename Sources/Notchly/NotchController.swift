@@ -23,7 +23,7 @@ final class NotchState: ObservableObject {
 
 /// Borderless panel that floats above the menu bar, right where the notch is.
 final class NotchPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     // Allow the panel to sit over the menu bar instead of being pushed below it.
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
@@ -75,6 +75,7 @@ final class NotchController {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.isFloatingPanel = true
+        panel.becomesKeyOnlyIfNeeded = true
         // Must come after isFloatingPanel (which resets the level to "floating").
         // Above the menu bar (24) and its status items (25), so they don't show through the panel.
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 2)
@@ -104,6 +105,7 @@ final class NotchController {
                 let locked = phase == .locked
                 self.panel.alphaValue = (locked && !Pref.bool(Pref.lockIndicator)) ? 0 : 1
                 if locked {
+                    ShelfPreview.shared.close()
                     self.cancelClose()
                     self.cancelOpen()
                     self.state.isOpen = false
@@ -115,7 +117,10 @@ final class NotchController {
         // Only let clicks hit the panel while it is open; otherwise it is click-through.
         state.$isOpen
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] open in self?.panel.ignoresMouseEvents = !open }
+            .sink { [weak self] open in
+                self?.panel.ignoresMouseEvents = !open
+                if !open { self?.panel.resignKey() }
+            }
             .store(in: &cancellables)
 
         NotificationCenter.default.addObserver(
@@ -179,17 +184,17 @@ final class NotchController {
         mouseMoved()
     }
 
-    /// True while the user is dragging file(s) from anywhere on screen.
-    private var isDraggingFiles: Bool {
+    /// Detect any content supported by the shelf without reading the general clipboard.
+    private var isDraggingShelfContent: Bool {
         guard NSEvent.pressedMouseButtons & 1 != 0 else { return false }
         let pb = NSPasteboard(name: .drag)
         return pb.changeCount != dragPasteboardCount
-            && pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+            && pb.canReadObject(forClasses: [NSURL.self, NSString.self, NSImage.self], options: nil)
     }
 
     private func mouseMoved() {
         let p = NSEvent.mouseLocation
-        let dragging = isDraggingFiles
+        let dragging = isDraggingShelfContent
 
         if state.isOpen {
             if openRect().contains(p) {

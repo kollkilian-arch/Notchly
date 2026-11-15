@@ -245,7 +245,7 @@ struct OpenContent: View {
             Group {
                 switch state.tab {
                 case .home: homeContent
-                case .shelf: ShelfView(shelf: shelf)
+                case .shelf: ShelfView(shelf: shelf, isActive: state.isOpen)
                 case .timer: TimerView(timer: timer)
                 case .scores: ScoresView(scores: scores)
                 case .usage: UsageView(usage: usage)

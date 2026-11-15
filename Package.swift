@@ -5,6 +5,7 @@ let package = Package(
     name: "Notchly",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "Notchly", path: "Sources/Notchly")
+        .executableTarget(name: "Notchly", path: "Sources/Notchly"),
+        .testTarget(name: "NotchlyTests", dependencies: ["Notchly"])
     ]
 )

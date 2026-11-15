@@ -45,6 +45,20 @@ func renderSnapshots(to dir: String) {
     ])
     let reloaded = ShelfStore(storeURL: storeURL)
     print("shelf: added=\(shelf.items.count) reloaded=\(reloaded.items.count) (expected 3 or 4 without the ghost)")
+    // Mixed content previews, including a pinned snippet and a locally stored screenshot.
+    shelf.addText("Release checklist\nReview changes, run checks, and package the app.")
+    if let snippet = shelf.selectedItem { shelf.togglePin(snippet) }
+    shelf.addLink(URL(string: "https://example.com/design-notes")!)
+    let sampleImage = NSImage(size: NSSize(width: 160, height: 100), flipped: false) { rect in
+        NSColor.systemBlue.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12).fill()
+        let title = "Screenshot" as NSString
+        title.draw(at: NSPoint(x: 24, y: 42), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 18, weight: .semibold), .foregroundColor: NSColor.white
+        ])
+        return true
+    }
+    if let data = sampleImage.tiffRepresentation { shelf.addImage(data) }
 
     // Give the monitors a moment to poll (music, calendar, artwork download).
     RunLoop.main.run(until: Date().addingTimeInterval(3))
@@ -408,6 +422,14 @@ func renderSnapshots(to dir: String) {
             .frame(width: width, height: 202)
             .background(Color(white: 0.55))
         capture(view, size: NSSize(width: width, height: 202), dark: true, to: dir, name: name)
+    }
+
+    capture(ShelfView(shelf: ShelfStore(storeURL: URL(fileURLWithPath: dir).appendingPathComponent("empty-shelf.json")),
+                      isActive: false).padding().background(.black),
+            size: NSSize(width: 590, height: 140), dark: true, to: dir, name: "shelf-empty")
+    for item in shelf.items where item.kind == .text || item.kind == .link {
+        capture(ShelfPreviewContent(item: item).environment(\.colorScheme, .dark), size: NSSize(width: 640, height: 440),
+                dark: true, to: dir, name: "shelf-preview-\(item.kind.rawValue)")
     }
 
     // The settings window, one image per tab (light appearance, like a normal window).
