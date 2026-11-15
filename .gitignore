@@ -1,0 +1,18 @@
+# SwiftPM / build output
+.build/
+.swiftpm/
+build/
+
+# Packaged releases (attach these to a GitHub release instead of committing them)
+dist/
+
+# macOS
+.DS_Store
+
+# Xcode (if you ever open the package there)
+*.xcodeproj
+xcuserdata/
+DerivedData/
+
+# Local scratch
+*.log

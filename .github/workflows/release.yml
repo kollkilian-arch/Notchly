@@ -1,0 +1,110 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds the app and publishes a GitHub release with the zip attached.
+# To build a release for a tag that already exists, run this workflow manually and enter the tag.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write          # create the release and upload its files
+
+jobs:
+  release:
+    runs-on: macos-15      # Apple Silicon
+    timeout-minutes: 30
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the tag matches the app version
+        run: |
+          VERSION="${TAG#v}"
+          PLIST="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          if [ "$VERSION" != "$PLIST" ]; then
+            echo "::error::Tag $TAG does not match the version in Resources/Info.plist ($PLIST). Bump the version, commit, and tag again."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Set up code signing
+        env:
+          P12_BASE64: ${{ secrets.RELEASE_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.RELEASE_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ]; then
+            echo "::warning::RELEASE_CERT_P12_BASE64 / RELEASE_CERT_PASSWORD are not set: building with an ad-hoc signature (users will be asked for permissions again after each update)."
+            echo "ALLOW_ADHOC=1" >> "$GITHUB_ENV"
+            echo "SIGNATURE=ad-hoc (unstable: macOS asks for permissions again after every update)" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          KEYCHAIN="$RUNNER_TEMP/release.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/release.p12"
+          security import "$RUNNER_TEMP/release.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/release.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+
+          # Make the temporary keychain visible to codesign, keeping the existing ones.
+          EXISTING="$(security list-keychains -d user | sed 's/[" ]//g')"
+          security list-keychains -d user -s "$KEYCHAIN" $EXISTING
+
+          security find-identity -p codesigning "$KEYCHAIN"
+          echo "SIGN_IDENTITY=Notchly Release Signing" >> "$GITHUB_ENV"
+          echo "SIGNATURE=release certificate (stable: macOS keeps permissions across updates)" >> "$GITHUB_ENV"
+
+      - name: Build and package
+        run: ./release.sh
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP="dist/Notchly-$VERSION.zip"
+          SHA="$(cut -d' ' -f1 "$ZIP.sha256")"
+
+          cat > release-notes.md <<EOF
+          ## Notchly $VERSION
+
+          A control centre for the MacBook notch. Requires a Mac with a notch on macOS 14 or later.
+
+          ### Install
+          1. Download \`Notchly-$VERSION.zip\`, unzip it and move **Notchly.app** to \`/Applications\`.
+          2. Open it. macOS blocks the first launch because the app is not notarized. Allow it once under
+             **System Settings → Privacy & Security → Open Anyway**, or run
+             \`xattr -dr com.apple.quarantine /Applications/Notchly.app\` and open it again.
+          3. Grant the permissions it asks for (Calendar, Automation, Accessibility); each is optional.
+
+          ### Details
+          - Signature: $SIGNATURE
+          - SHA-256 of the zip: \`$SHA\`
+
+          See the [README](https://github.com/$GITHUB_REPOSITORY#readme) for features and notes.
+          EOF
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists: replacing its files."
+            gh release upload "$TAG" "$ZIP" "$ZIP.sha256" --clobber
+          else
+            gh release create "$TAG" "$ZIP" "$ZIP.sha256" \
+              --verify-tag --title "Notchly $VERSION" --notes-file release-notes.md
+          fi

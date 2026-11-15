@@ -1,0 +1,11 @@
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "Notchly",
+    platforms: [.macOS(.v14)],
+    targets: [
+        .executableTarget(name: "Notchly", path: "Sources/Notchly"),
+        .testTarget(name: "NotchlyTests", dependencies: ["Notchly"])
+    ]
+)
