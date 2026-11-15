@@ -100,13 +100,16 @@ struct AirDropDropZone: View {
     @State private var token = UUID()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if sharing { ProgressView().controlSize(.small) }
-            else { AirDropSymbol().frame(width: 28, height: 28) }
-            Text(sharing ? "AirDrop is open" : "AirDrop").font(.system(size: 13, weight: .semibold))
-            Text(sharing ? "Choose a recipient" : "Drop here to send")
-                .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
-            Spacer(minLength: 0)
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 4) {
+                if sharing { ProgressView().controlSize(.small).frame(width: 24, height: 24) }
+                else { AirDropSymbol().frame(width: 24, height: 24) }
+                Text(sharing ? "AirDrop is open" : "AirDrop").font(.system(size: 12, weight: .semibold))
+                Text(sharing ? "Choose a recipient" : "Drop here to send")
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let selected = shelf.selectedItem {
                 Button("Send selected item…") {
                     sharing = true
@@ -121,7 +124,7 @@ struct AirDropDropZone: View {
         }
         .foregroundStyle(targeted ? Color.white : Color.accentColor)
         .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: 18).fill(targeted ? Color.accentColor.opacity(0.4) : Color.accentColor.opacity(0.13)))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.accentColor.opacity(targeted ? 0.8 : 0.2)))
         .contentShape(RoundedRectangle(cornerRadius: 18))

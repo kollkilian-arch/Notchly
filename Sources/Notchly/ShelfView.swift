@@ -60,11 +60,14 @@ struct ShelfView: View {
 
             if shelf.items.isEmpty {
                 VStack(spacing: 4) {
-                    Image(systemName: "tray.and.arrow.down.fill").font(.system(size: 20))
+                    Image(systemName: "tray.and.arrow.down.fill").font(.system(size: 24))
+                        .frame(width: 24, height: 24)
                     Text("Drop files, links, or text here").font(.system(size: 12, weight: .semibold))
                     Text("Or paste a screenshot with ⌘V")
                         .font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
                 }
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .foregroundStyle(.white.opacity(targeted ? 0.95 : 0.6))
             } else {
                 ScrollViewReader { proxy in

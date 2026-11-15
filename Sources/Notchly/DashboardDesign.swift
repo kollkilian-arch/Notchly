@@ -126,6 +126,7 @@ struct FloatingNavigation: View {
     @AppStorage(Pref.scoresEnabled) private var scores = true
     @AppStorage(Pref.showUsage) private var showUsage = true
     @AppStorage(Pref.glassDashboard) private var glass = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 3) {
@@ -135,12 +136,13 @@ struct FloatingNavigation: View {
                     Feedback.haptic(.light)
                 } label: {
                     HStack(spacing: 5) {
-                        if tab == .usage {
-                            UsageRing(percent: usage.fiveHourPercent).frame(width: 15, height: 15)
-                        } else { Image(systemName: tab.symbol).frame(width: 15, height: 15) }
-                        Text(tab == .usage ? "Usage" : tab.title)
-                        if tab == .shelf, !shelf.items.isEmpty {
-                            Text("\(shelf.items.count)").foregroundStyle(.white.opacity(0.5))
+                        Image(systemName: tab == .usage ? "chart.bar.xaxis" : tab.symbol)
+                            .frame(width: 15, height: 15)
+                        if state.tab == tab {
+                            Text(tab == .usage ? "Usage" : tab.title)
+                            if tab == .shelf, !shelf.items.isEmpty {
+                                Text("\(shelf.items.count)").foregroundStyle(.white.opacity(0.5))
+                            }
                         }
                     }
                     .font(.system(size: 10, weight: .medium))
@@ -150,7 +152,9 @@ struct FloatingNavigation: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .help(tab.title)
                 .accessibilityLabel(tab.title)
+                .accessibilityValue(tab == .usage ? usage.fiveHourPercent.map { "\(Int($0))% used" } ?? "" : "")
                 .accessibilityAddTraits(state.tab == tab ? .isSelected : [])
             }
         }
@@ -158,5 +162,6 @@ struct FloatingNavigation: View {
         .background(GlassSurface(glass: glass))
         .clipShape(Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.14)))
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: state.tab)
     }
 }

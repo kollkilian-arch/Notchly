@@ -41,6 +41,7 @@ func renderExperimentalSnapshots(to dir: String) {
     ], selected: 2)
     let shelf = ShelfStore(storeURL: URL(fileURLWithPath: dir).appendingPathComponent("preview-shelf.json"))
     if shelf.items.isEmpty { shelf.addText("Design notes"); shelf.addLink(URL(string: "https://example.com")!) }
+    let emptyShelf = ShelfStore(storeURL: URL(fileURLWithPath: dir).appendingPathComponent("preview-empty-shelf.json"))
     var swapped = DashboardLayout(); swapped.move(.calendar, by: -1)
     var calendarOnly = DashboardLayout(); calendarOnly.setVisible(.music, false)
     let variants: [(String, Bool, Bool, String, NotchTab)] = [
@@ -50,6 +51,7 @@ func renderExperimentalSnapshots(to dir: String) {
         ("calendar-first", true, true, swapped.json, .home),
         ("calendar-only", true, true, calendarOnly.json, .home),
         ("shelf-airdrop", true, true, "", .shelf),
+        ("shelf-empty", true, true, "", .shelf),
         ("audio-outputs", true, true, "", .audio),
         ("classic", false, false, "", .home),
     ]
@@ -63,7 +65,7 @@ func renderExperimentalSnapshots(to dir: String) {
         state.isOpen = true
         state.tab = tab
         let view = NotchRoot(state: state, media: media, battery: BatteryMonitor(previewLevel: 82),
-                             calendar: calendar, hud: HUDMonitor(preview: nil), shelf: shelf,
+                             calendar: calendar, hud: HUDMonitor(preview: nil), shelf: name == "shelf-empty" ? emptyShelf : shelf,
                              usage: UsageMonitor(preview: .idle), timer: TimerModel(preview: .idle, total: 0, remaining: 0),
                              lock: LockMonitor(preview: .unlocked), scores: ScoresMonitor(preview: [], live: nil), audio: audio)
             .frame(width: 820, height: 350)
