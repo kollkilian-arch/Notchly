@@ -38,7 +38,10 @@ struct UsageView: View {
             footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { usage.refresh() }
+        .onAppear {
+            usage.refresh()
+            usage.refreshHeatmap()
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -51,9 +54,12 @@ struct UsageView: View {
             .padding(.top, 14)
 
         case .limits(let l):
-            HStack(alignment: .top, spacing: 30) {
-                if let w = l.fiveHour { LimitColumn(title: "5-hour limit", window: w) }
-                if let w = l.sevenDay { LimitColumn(title: "Weekly limit", window: w) }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 30) {
+                    if let w = l.fiveHour { LimitColumn(title: "5-hour limit", window: w) }
+                    if let w = l.sevenDay { LimitColumn(title: "Weekly limit", window: w) }
+                }
+                if let heatmap = usage.heatmap { UsageHeatmapView(heatmap: heatmap) }
             }
 
         case .local(let u, let note):
@@ -87,7 +93,10 @@ struct UsageView: View {
                 .foregroundStyle(.white.opacity(0.45))
                 .lineLimit(1)
             Spacer()
-            Button { usage.refresh(force: true) } label: {
+            Button {
+                usage.refresh(force: true)
+                usage.refreshHeatmap(force: true)
+            } label: {
                 Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold))
             }
             .buttonStyle(IconButtonStyle())
@@ -162,12 +171,76 @@ private struct TokenColumn: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func format(_ n: Int) -> String {
-        switch n {
-        case 1_000_000...: return String(format: "%.1fM", Double(n) / 1_000_000)
-        case 10_000...: return "\(n / 1000)K"
-        case 1_000...: return String(format: "%.1fK", Double(n) / 1000)
-        default: return "\(n)"
+    private func format(_ n: Int) -> String { formatTokens(n) }
+}
+
+/// "412K", "14.8M", "850".
+func formatTokens(_ n: Int) -> String {
+    switch n {
+    case 1_000_000...: return String(format: "%.1fM", Double(n) / 1_000_000)
+    case 10_000...: return "\(n / 1000)K"
+    case 1_000...: return String(format: "%.1fK", Double(n) / 1000)
+    default: return "\(n)"
+    }
+}
+
+/// Hour-by-hour Claude Code activity for the last seven days: a row per day (today last), a column per
+/// hour of the day, shaded by how busy that hour was compared with the busiest one. Hover for details.
+struct UsageHeatmapView: View {
+    let heatmap: UsageHeatmap
+
+    private static let rampBlue = Color(red: 0.25, green: 0.58, blue: 1.0)
+
+    static func color(for cell: UsageHeatmap.Cell) -> Color {
+        switch cell {
+        case .future: return .clear
+        case .idle: return .white.opacity(0.07)
+        case .level(let n): return rampBlue.opacity([0.0, 0.38, 0.58, 0.8, 1.0][min(max(n, 1), 4)])
+        }
+    }
+
+    private static let tooltipDay: DateFormatter = {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("EEEdMMM")
+        return f
+    }()
+
+    private func tooltip(day: Int, hour: Int) -> String {
+        guard let begin = heatmap.hourStart(day: day, hour: hour) else { return "" }
+        let when = "\(Self.tooltipDay.string(from: begin)), \(String(format: "%02d", hour)):00"
+        let tokens = heatmap.tokens(day: day, hour: hour)
+        return tokens == 0 ? when : "\(when) · \(formatTokens(tokens)) tokens"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if heatmap.isEmpty {
+                Text("No Claude Code activity on this Mac in the last 7 days.")
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
+            } else {
+                // Four blocks of six hours (night, morning, afternoon, evening) give the eye something to hold on to.
+                VStack(spacing: 1) {
+                    ForEach(0..<UsageHeatmap.days, id: \.self) { day in
+                        HStack(spacing: 7) {
+                            ForEach(0..<4, id: \.self) { block in
+                                HStack(spacing: 1.5) {
+                                    ForEach(0..<6, id: \.self) { offset in
+                                        let hour = block * 6 + offset
+                                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                                            .fill(Self.color(for: heatmap.cell(day: day, hour: hour)))
+                                            .frame(maxWidth: .infinity)
+                                            .help(tooltip(day: day, hour: hour))
+                                    }
+                                }
+                            }
+                        }
+                        .frame(height: 5)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Claude Code activity by hour, last 7 days")
+                .accessibilityValue("\(formatTokens(heatmap.total)) tokens in total")
+            }
         }
     }
 }

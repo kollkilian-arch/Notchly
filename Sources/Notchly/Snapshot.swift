@@ -30,10 +30,26 @@ func renderSnapshots(to dir: String) {
     let t0 = Date()
     let local = UsageMonitor.scanLocalLogs()
     print("local logs: last5h=\(local.last5h) last7d=\(local.last7d) tokens, scanned in \(String(format: "%.2f", Date().timeIntervalSince(t0))) s")
+    // Heatmaps: a made-up working week, and what this Mac's real Claude Code logs show.
+    let heatNow = Date()
+    let heatStart = UsageHeatmap.windowStart(now: heatNow)
+    var sampleBuckets = [Int](repeating: 0, count: UsageHeatmap.days * UsageHeatmap.hoursPerDay)
+    for day in 0..<UsageHeatmap.days {
+        for hour in 8...22 where (day * 7 + hour * 13) % 11 > 3 { sampleBuckets[day * 24 + hour] = ((day + 2) * (hour - 6) * 1_900) % 170_000 + 4_000 }
+    }
+    let sampleHeatmap = UsageHeatmap(start: heatStart, now: heatNow, tokens: sampleBuckets)
+    let heatT0 = Date()
+    let realEvents = UsageMonitor.readLocalEvents(since: heatStart)
+    let realHeatmap = UsageHeatmap.build(events: realEvents, start: heatStart, now: heatNow)
+    print("heatmap (real logs): \(realEvents.count) messages, peak \(realHeatmap.peak) tokens/h, read in \(String(format: "%.2f", Date().timeIntervalSince(heatT0))) s")
+    let realHeatUsage = UsageMonitor(preview: .limits(LimitUsage(
+        fiveHour: LimitWindow(percent: 37, resetsAt: Date().addingTimeInterval(2 * 3600 + 10 * 60)),
+        sevenDay: LimitWindow(percent: 84, resetsAt: Date().addingTimeInterval(3 * 86400)),
+        plan: "pro", fetched: Date())), heatmap: realHeatmap)
     let limitsUsage = UsageMonitor(preview: .limits(LimitUsage(
         fiveHour: LimitWindow(percent: 37, resetsAt: Date().addingTimeInterval(2 * 3600 + 10 * 60)),
         sevenDay: LimitWindow(percent: 84, resetsAt: Date().addingTimeInterval(3 * 86400)),
-        plan: "pro", fetched: Date())))
+        plan: "pro", fetched: Date())), heatmap: sampleHeatmap)
     let highUsage = UsageMonitor(preview: .limits(LimitUsage(
         fiveHour: LimitWindow(percent: 87, resetsAt: Date().addingTimeInterval(50 * 60)),
         sevenDay: LimitWindow(percent: 41, resetsAt: Date().addingTimeInterval(2 * 86400)),
@@ -397,6 +413,7 @@ func renderSnapshots(to dir: String) {
         ("closed", false, .home, limitsUsage, idleTimer), ("open", true, .home, limitsUsage, idleTimer),
         ("shelf", true, .shelf, limitsUsage, idleTimer),
         ("usage-limits", true, .usage, limitsUsage, idleTimer), ("usage-local", true, .usage, localUsage, idleTimer),
+        ("usage-heatmap-real", true, .usage, realHeatUsage, idleTimer),
         ("timer-idle", true, .timer, limitsUsage, idleTimer), ("timer-running", true, .timer, limitsUsage, runningTimer),
         ("timer-finished", true, .timer, limitsUsage, finishedTimer),
         ("closed-timer-running", false, .home, limitsUsage, runningTimer),
