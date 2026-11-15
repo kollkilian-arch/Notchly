@@ -56,12 +56,28 @@ struct UsageView: View {
                 if let w = l.sevenDay { LimitColumn(title: "Weekly limit", window: w) }
             }
 
-        case .local(let u, _):
-            HStack(alignment: .top, spacing: 30) {
-                TokenColumn(title: "Last 5 hours", tokens: u.last5h)
-                TokenColumn(title: "Last 7 days", tokens: u.last7d)
+        case .local(let u, let note):
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 30) {
+                    TokenColumn(title: "Last 5 hours", tokens: u.last5h)
+                    TokenColumn(title: "Last 7 days", tokens: u.last7d)
+                }
+                // Say why there are no limits, and what to do about it, where it is seen.
+                Label(Self.localHint(for: note), systemImage: "info.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    /// The reason limits are missing, as a sentence that says what Notchly shows instead.
+    static func localHint(for note: String) -> String {
+        if note == "Not signed in to Claude Code" {
+            return "Sign in to Claude Code to see your plan limits. Showing local token counts instead."
+        }
+        let sentence = note.hasSuffix(".") ? note : note + "."
+        return sentence + " Showing local token counts instead."
     }
 
     private var footer: some View {
@@ -84,8 +100,8 @@ struct UsageView: View {
         case .limits(let l):
             let plan = l.plan.map { "Claude \($0.capitalized) · " } ?? ""
             return plan + "updated " + l.fetched.formatted(date: .omitted, time: .shortened)
-        case .local(_, let note):
-            return note + " Showing local token counts."
+        case .local:
+            return "Local token counts"
         }
     }
 }

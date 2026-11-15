@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 
-enum NotchTab { case home, shelf, timer, scores, usage, audio }
+enum NotchTab: CaseIterable { case home, shelf, timer, scores, usage, audio }
 
 final class NotchState: ObservableObject {
     @Published var isOpen = false
@@ -168,6 +168,34 @@ final class NotchController {
         if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in self?.handleMouse(e); return e }) {
             monitors.append(l)
         }
+        if let k = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] e in self?.handleKey(e) ?? e }) {
+            monitors.append(k)
+        }
+    }
+
+    // MARK: Keyboard
+
+    /// ⌘1…⌘6 and ← / → switch tabs, ⌘, opens Settings, Esc hands the keyboard back. Only while the
+    /// open notch is the key window, which a click inside it makes it (hovering never takes the
+    /// keyboard away from the app you are working in).
+    private func handleKey(_ event: NSEvent) -> NSEvent? {
+        guard state.isOpen, panel.isKeyWindow, event.window === panel, panel.attachedSheet == nil else { return event }
+        let tabs = NotchTab.visibleNow
+        guard let action = TabKeys.action(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers,
+                                          modifiers: event.modifierFlags, current: state.tab, visible: tabs) else { return event }
+        switch action {
+        case .select(let tab): select(tab)
+        case .step(let offset): select(NotchTab.step(from: state.tab, by: offset, in: tabs))
+        case .releaseKeyboard: panel.resignKey()
+        case .openSettings: SettingsWindowController.shared.show()
+        }
+        return nil
+    }
+
+    private func select(_ tab: NotchTab) {
+        guard state.tab != tab else { return }
+        state.tab = tab
+        Feedback.haptic(.light)
     }
 
     private func relayout() {
@@ -215,6 +243,8 @@ final class NotchController {
                     state.cycleActivity()
                 }
                 else { openNotch(dragging: false) }
+            } else if state.isOpen, openRect().contains(NSEvent.mouseLocation), !panel.isKeyWindow {
+                panel.makeKey()         // a click in the open notch is what gives it the keyboard
             }
             return
         }

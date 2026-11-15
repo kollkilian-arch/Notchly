@@ -403,6 +403,9 @@ func renderSnapshots(to dir: String) {
         ("closed-timer-paused", false, .home, limitsUsage, pausedTimer),
         ("closed-timer-finished", false, .home, limitsUsage, finishedTimer),
         ("calendar-join", true, .home, limitsUsage, idleTimer),
+        ("calendar-no-access", true, .home, limitsUsage, idleTimer),
+        ("calendar-denied", true, .home, limitsUsage, idleTimer),
+        ("calendar-empty", true, .home, limitsUsage, idleTimer),
         ("closed-meeting-soon", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-now", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-with-timer", false, .home, limitsUsage, runningTimer),     // timer outranks the meeting
@@ -437,7 +440,10 @@ func renderSnapshots(to dir: String) {
         let variantCalendar = name == "activities-urgent-meeting"
             ? CalendarMonitor(preview: [event("Starting soon", startsIn: 0.75)])
             : (["calendar-join": meetingCalendar, "closed-meeting-soon": soonCalendar,
-                "closed-meeting-now": nowCalendar, "closed-meeting-with-timer": soonCalendar][name] ?? calendar)
+                "closed-meeting-now": nowCalendar, "closed-meeting-with-timer": soonCalendar,
+                "calendar-no-access": CalendarMonitor(preview: [], authorized: false),
+                "calendar-denied": CalendarMonitor(preview: [], authorized: false, denied: true),
+                "calendar-empty": CalendarMonitor(preview: [])][name] ?? calendar)
         let variantLock = name == "closed-locked" ? lockedLock : (name == "closed-unlocking" ? unlockingLock : idleLock)
         let variantScores = ["scores-tab": scoresList, "scores-nfl": scoresNFL, "closed-nfl-home-ball": scoresNFL,
                              "closed-nfl-away-ball": scoresNFLAway, "closed-nfl-flash": scoresNFLFlash,

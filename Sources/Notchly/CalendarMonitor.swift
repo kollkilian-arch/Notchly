@@ -42,9 +42,10 @@ final class CalendarMonitor: ObservableObject {
     }
 
     /// For the debug snapshot tool: fixed events, no EventKit access, no refresh timer.
-    init(preview events: [CalEvent]) {
+    init(preview events: [CalEvent], authorized: Bool = true, denied: Bool = false) {
         self.events = events
-        authorized = true
+        self.authorized = authorized
+        self.denied = denied
     }
 
     deinit {

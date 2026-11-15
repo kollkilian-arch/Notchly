@@ -41,6 +41,14 @@ other items across launches. Original files remain references; pasted images and
 saved locally in `~/Library/Application Support/Notchly/shelf.assets/`. Removing a Shelf item never
 deletes an original file.
 
+### Keyboard
+
+Click anywhere inside the open notch to give it the keyboard (hovering never takes it from the app you
+are working in). Then **⌘1 – ⌘6** jump to the tabs in the order the tab bar shows them, **← / →** step
+through the tabs, **⌘,** opens Settings, and **Esc** hands the keyboard back. On the Shelf, ← / → move
+between items instead, and ⌘1 – ⌘6 still switch tabs. Hover over a tab icon to see its name, shortcut, and
+what its badge or ring means.
+
 ### Choosing live activities
 
 Open the notch and use the **activity menu** beside the clock to select an active timer, meeting,

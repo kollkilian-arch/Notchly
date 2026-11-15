@@ -558,18 +558,35 @@ struct CalendarView: View {
                 .textCase(.uppercase)
 
             if !calendar.authorized {
-                Button(calendar.denied ? "Enable in System Settings" : "Allow calendar access") {
-                    if calendar.denied {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
-                    } else {
-                        calendar.requestAccess()
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(calendar.denied
+                         ? "Calendar access is turned off for Notchly. Turn it on in System Settings to see your next meetings here."
+                         : "See your next meetings here, with a Join button for video calls.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        if calendar.denied {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                        } else {
+                            calendar.requestAccess()
+                        }
+                    } label: {
+                        Text(calendar.denied ? "Open System Settings" : "Allow Calendar Access")
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 22)
+                            .foregroundStyle(.white.opacity(0.95))
+                            .background(Capsule().fill(.white.opacity(0.16)))
+                            .contentShape(Capsule())
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(.blue)
             } else if calendar.events.isEmpty {
-                Text("No upcoming events").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("No upcoming events").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                    Text("Nothing in the next 48 hours.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
+                }
             } else {
                 ForEach(calendar.events.prefix(2)) { event in
                     HStack(alignment: .center, spacing: 8) {

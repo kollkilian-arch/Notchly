@@ -14,8 +14,10 @@ struct ShelfView: View {
                 Text(shelf.items.isEmpty ? "Your shelf" : "\(shelf.items.count) items")
                     .foregroundStyle(.white.opacity(0.55))
                 Spacer()
-                Text("Space to preview · double-click to open")
-                    .foregroundStyle(.white.opacity(0.4))
+                if !shelf.items.isEmpty {       // nothing to preview or open yet
+                    Text("Space to preview · double-click to open")
+                        .foregroundStyle(.white.opacity(0.4))
+                }
                 Button { shelf.paste(from: pasteboard) } label: {
                     Label("Paste", systemImage: "doc.on.clipboard")
                 }
@@ -204,7 +206,7 @@ struct ShelfTile: View {
     }
 }
 
-/// Home / Shelf switcher shown in the expanded header.
+/// The tab bar in the expanded header.
 struct TabSwitcher: View {
     @ObservedObject var state: NotchState
     @ObservedObject var shelf: ShelfStore
@@ -212,21 +214,35 @@ struct TabSwitcher: View {
     @AppStorage(Pref.showUsage) private var showUsage = true
     @AppStorage(Pref.scoresEnabled) private var showScores = true
 
+    private var tabs: [NotchTab] { NotchTab.visible(scores: showScores, usage: showUsage) }
+
     var body: some View {
         HStack(spacing: 2) {
-            button(.home, symbol: "house.fill")
-            button(.audio, symbol: "headphones")
-            button(.shelf, symbol: "tray.fill")
-            button(.timer, symbol: "timer")
-            if showScores { button(.scores, symbol: "sportscourt.fill") }
-            if showUsage { button(.usage, symbol: "") }
+            ForEach(Array(tabs.enumerated()), id: \.element) { index, tab in
+                button(tab, shortcut: index + 1)
+            }
         }
         .padding(2)
         .background(Capsule().fill(.white.opacity(0.1)))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Tabs")
     }
 
-    private func button(_ tab: NotchTab, symbol: String) -> some View {
+    /// What the tab is, plus the detail its badge or ring stands for.
+    private func detail(_ tab: NotchTab) -> String? {
+        switch tab {
+        case .shelf:
+            let count = shelf.items.count
+            return count == 0 ? nil : (count == 1 ? "1 item" : "\(count) items")
+        case .usage:
+            return usage.fiveHourPercent.map { "\(Int($0.rounded()))% of the 5-hour limit used" }
+        default: return nil
+        }
+    }
+
+    private func button(_ tab: NotchTab, shortcut: Int) -> some View {
         let selected = state.tab == tab
+        let detail = detail(tab)
         return Button {
             guard state.tab != tab else { return }
             state.tab = tab
@@ -238,7 +254,7 @@ struct TabSwitcher: View {
                     UsageRing(percent: usage.fiveHourPercent)
                         .frame(width: 20, height: 20)
                 } else {
-                    Image(systemName: symbol)
+                    Image(systemName: tab.symbol)
                         .font(.system(size: 11))
                         .frame(width: 20, height: 20)
                 }
@@ -252,5 +268,9 @@ struct TabSwitcher: View {
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.15), value: selected)
+        .help("\(tab.title)\(detail.map { " · \($0)" } ?? "")   ⌘\(shortcut)")
+        .accessibilityLabel(tab.title)
+        .accessibilityValue(detail ?? "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
