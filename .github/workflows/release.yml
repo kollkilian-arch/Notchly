@@ -89,9 +89,9 @@ jobs:
 
           ### Install
           1. Download \`Notchly-$VERSION.zip\`, unzip it and move **Notchly.app** to \`/Applications\`.
-          2. Open it. macOS blocks the first launch because the app is not notarized. Allow it once under
-             **System Settings → Privacy & Security → Open Anyway**, or run
-             \`xattr -dr com.apple.quarantine /Applications/Notchly.app\` and open it again.
+          2. macOS blocks the first launch because the app is not notarized. In Terminal, run
+             \`xattr -dr com.apple.quarantine /Applications/Notchly.app\`, then open the app.
+             (\"Open Anyway\" in System Settings also works, but then in-app updates can't install themselves.)
           3. Grant the permissions it asks for (Calendar, Automation, Accessibility); each is optional.
 
           ### Details

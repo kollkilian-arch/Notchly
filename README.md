@@ -82,10 +82,17 @@ If you were sent `Notchly-<version>.zip` (or download it from the repo's Release
 
 1. Optionally verify it: `shasum -a 256 -c Notchly-<version>.zip.sha256` (run next to the zip).
 2. Unzip and move **Notchly.app** to `/Applications`.
-3. Open it. macOS will block the first launch, because the app is signed with a local certificate and is
-   **not notarized** (that needs a paid Apple Developer account). Allow it once, either way:
-   - **System Settings → Privacy & Security → scroll down → "Open Anyway"** (after the blocked launch), or
-   - in Terminal: `xattr -dr com.apple.quarantine /Applications/Notchly.app`, then open it again.
+3. macOS would block the first launch, because the app is signed with a local certificate and is
+   **not notarized** (that needs a paid Apple Developer account). Remove the "downloaded" mark first, in
+   Terminal, then open the app:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Notchly.app
+   ```
+
+   (The alternative, **System Settings → Privacy & Security → "Open Anyway"**, also works, but macOS then keeps
+   running the app from a temporary read-only copy, so in-app updates can't install themselves. If you used it,
+   run the command above, quit Notchly and open it again.)
 4. Grant the permissions it asks for (see below). Because every release is signed with the same certificate,
    macOS keeps your approvals when you update to a newer version.
 

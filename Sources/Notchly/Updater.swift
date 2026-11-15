@@ -163,20 +163,59 @@ final class Updater: ObservableObject, @unchecked Sendable {
 
     // MARK: Installing
 
-    /// True if the running app can be replaced in place (its folder is writable).
-    var canInstallInPlace: Bool {
-        FileManager.default.isWritableFile(atPath: Bundle.main.bundleURL.deletingLastPathComponent().path)
+    // MARK: Where the app really lives
+
+    /// A freshly downloaded (quarantined) app that was opened from where it was saved is run by macOS from a
+    /// read-only copy under .../AppTranslocation/... ("App Translocation"). That copy can't be replaced; the
+    /// app has to update the place it really lives.
+    static func isTranslocatedPath(_ url: URL) -> Bool {
+        url.path.contains("/AppTranslocation/")
     }
+
+    /// Asks macOS where a translocated app really lives (the same call Sparkle uses).
+    static func originalLocation(ofTranslocated url: URL) -> URL? {
+        typealias CreateOriginalPath = @convention(c) (CFURL, UnsafeMutablePointer<Unmanaged<CFError>?>?) -> Unmanaged<CFURL>?
+        guard let handle = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY),
+              let symbol = dlsym(handle, "SecTranslocateCreateOriginalPathForURL") else { return nil }
+        let createOriginalPath = unsafeBitCast(symbol, to: CreateOriginalPath.self)
+        guard let original = createOriginalPath(url as CFURL, nil)?.takeRetainedValue() else { return nil }
+        return original as URL
+    }
+
+    /// The app bundle to update: where Notchly really is, even if macOS is running a translocated copy.
+    static var installedAppURL: URL {
+        let running = Bundle.main.bundleURL
+        guard isTranslocatedPath(running) else { return running }
+        return originalLocation(ofTranslocated: running) ?? running
+    }
+
+    private var blockedReasonOverride: String?
+
+    /// Why the app can't replace itself right now, or nil if it can.
+    var installBlockedReason: String? {
+        if let blockedReasonOverride { return blockedReasonOverride }
+        let target = Self.installedAppURL
+        if Self.isTranslocatedPath(target) {
+            return "macOS is running Notchly from a temporary read-only copy, because the app is still marked as downloaded. Quit Notchly, run  xattr -dr com.apple.quarantine /Applications/Notchly.app  in Terminal (use the app's real location), and open it again."
+        }
+        if !FileManager.default.isWritableFile(atPath: target.deletingLastPathComponent().path) {
+            return "Notchly can't replace itself where it is now. Use Release Notes to download the update and replace the app yourself."
+        }
+        return nil
+    }
+
+    /// True if the app can be replaced in place.
+    var canInstallInPlace: Bool { installBlockedReason == nil }
 
     func installAvailableUpdate() {
         guard let release = available, phase == .idle else { return }
-        guard canInstallInPlace else {
-            status = .failed(UpdateError.notWritable(Bundle.main.bundleURL.deletingLastPathComponent().path).localizedDescription)
+        if let reason = installBlockedReason {
+            status = .failed(reason)
             return
         }
         phase = .downloading(0)
         status = .none
-        let app = Bundle.main.bundleURL
+        let app = Self.installedAppURL
 
         Task {
             do {
@@ -412,7 +451,9 @@ final class Updater: ObservableObject, @unchecked Sendable {
     // MARK: Debug hooks
 
     /// Shows a fixed state in the debug snapshot tool.
-    func applyPreview(available: AppRelease?, phase: Phase = .idle, status: Status = .none, lastChecked: Date? = nil) {
+    func applyPreview(available: AppRelease?, phase: Phase = .idle, status: Status = .none, lastChecked: Date? = nil,
+                      blockedReason: String? = nil) {
+        self.blockedReasonOverride = blockedReason
         self.available = available
         self.phase = phase
         self.status = status

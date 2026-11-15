@@ -138,7 +138,15 @@ func renderSnapshots(to dir: String) {
     updateCheck("release: prerelease is ignored", (try? Updater.parseRelease(Data(#"{"tag_name":"v9","html_url":"https://x.y","prerelease":true}"#.utf8))) == nil)
     updateCheck("release: draft is ignored", (try? Updater.parseRelease(Data(#"{"tag_name":"v9","html_url":"https://x.y","draft":true}"#.utf8))) == nil)
     updateCheck("release: garbage is rejected", (try? Updater.parseRelease(Data("not json".utf8))) == nil)
-    updateCheck("release: no assets means nothing to install", (try? Updater.parseRelease(Data(#"{"tag_name":"v0.1.3","html_url":"https://x.y"}"#.utf8)))?.zip == nil)
+    updateCheck("translocated path is recognised",
+                Updater.isTranslocatedPath(URL(fileURLWithPath: "/private/var/folders/hn/abc/T/AppTranslocation/3AA87629-664A/d/Notchly.app")))
+    updateCheck("normal paths are not translocated",
+                !Updater.isTranslocatedPath(URL(fileURLWithPath: "/Applications/Notchly.app"))
+                && !Updater.isTranslocatedPath(URL(fileURLWithPath: "/Users/x/Downloads/Notchly.app")))
+    let notTranslocated = Updater.originalLocation(ofTranslocated: URL(fileURLWithPath: "/Applications/Notchly.app"))
+    updateCheck("original-location lookup does not invent a path for a normal app",
+                notTranslocated == nil || notTranslocated?.path == "/Applications/Notchly.app")
+    updateCheck("release: no assets means nothing to install",(try? Updater.parseRelease(Data(#"{"tag_name":"v0.1.3","html_url":"https://x.y"}"#.utf8)))?.zip == nil)
     print("updates: \(updateChecks - updateFails.count)/\(updateChecks) checks pass" + (updateFails.isEmpty ? "" : " — FAILED: \(updateFails)"))
     let sampleRelease = AppRelease(
         version: "0.1.3", tag: "v0.1.3", pageURL: URL(string: "https://github.com/kollkilian-arch/Notchly/releases/tag/v0.1.3")!,
@@ -493,6 +501,10 @@ func renderSnapshots(to dir: String) {
         Updater.shared.applyPreview(available: release, phase: phase, status: status, lastChecked: last)
         capture(SettingsView(initialTab: .about), size: NSSize(width: 520, height: 530), dark: false, to: dir, name: "settings-\(name)")
     }
+    Updater.shared.applyPreview(
+        available: sampleRelease, lastChecked: checked,
+        blockedReason: "macOS is running Notchly from a temporary read-only copy, because the app is still marked as downloaded. Quit Notchly, run  xattr -dr com.apple.quarantine /Applications/Notchly.app  in Terminal (use the app's real location), and open it again.")
+    capture(SettingsView(initialTab: .about), size: NSSize(width: 520, height: 530), dark: false, to: dir, name: "settings-about-blocked")
     Updater.shared.applyPreview(available: nil)
 }
 

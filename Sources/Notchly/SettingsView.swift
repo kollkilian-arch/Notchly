@@ -233,9 +233,8 @@ private struct AboutSettings: View {
                 }
                 if case .failed(let message) = updater.status {
                     Text(message).font(.caption).foregroundStyle(.red)
-                } else if !updater.canInstallInPlace {
-                    Text("Notchly can't replace itself where it is now. Use Release Notes to download the update and replace the app yourself.")
-                        .font(.caption).foregroundStyle(.secondary)
+                } else if let reason = updater.installBlockedReason {
+                    Text(reason).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
