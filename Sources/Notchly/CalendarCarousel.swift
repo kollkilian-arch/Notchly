@@ -9,25 +9,28 @@ struct CalendarCarousel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text(calendar.browsingDay.formatted(.dateTime.month(.wide).year()))
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Button("Today") { calendar.selectDay(Date()) }
-                    .font(.system(size: 10)).buttonStyle(.plain)
-                dayStepButton(-1, symbol: "chevron.left", label: "Previous day")
-                dayStepButton(1, symbol: "chevron.right", label: "Next day")
-            }
-            HStack(spacing: 0) {
-                ForEach(days, id: \.self) { day in
-                    dayButton(day)
+            HStack(spacing: 8) {
+                Button { calendar.selectDay(Date()) } label: {
+                    Text(calendar.browsingDay.formatted(.dateTime.month(.abbreviated)))
+                        .font(.system(size: 23, weight: .bold))
+                        .fixedSize()
                 }
+                .buttonStyle(.plain)
+                .help("Return to today")
+                .accessibilityLabel("\(calendar.browsingDay.formatted(.dateTime.month(.wide).year())). Return to today")
+                HStack(spacing: 0) {
+                    ForEach(Array(days.enumerated()), id: \.element) { index, day in
+                        dayButton(day, distance: abs(index - 3))
+                    }
+                }
+                .frame(height: 55)
+                .background(CalendarSwipeInput(shift: shift))
+                .highPriorityGesture(DragGesture(minimumDistance: 14).onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    shift(value.translation.width < 0 ? 1 : -1)
+                })
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: calendar.browsingDay)
             }
-            .gesture(DragGesture(minimumDistance: 25).onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                shift(value.translation.width < 0 ? 1 : -1)
-            })
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: calendar.browsingDay)
             if !calendar.authorized {
                 CalendarView(calendar: calendar)
             } else if events.isEmpty {
@@ -60,12 +63,20 @@ struct CalendarCarousel: View {
                     }
                 }
             }
+            HStack {
+                dayStepButton(-1, symbol: "chevron.left", label: "Previous day")
+                Spacer()
+                Button("Today") { calendar.selectDay(Date()) }
+                    .font(.system(size: 9)).foregroundStyle(.white.opacity(0.4)).buttonStyle(.plain)
+                Spacer()
+                dayStepButton(1, symbol: "chevron.right", label: "Next day")
+            }
         }
         .onAppear { calendar.selectDay(calendar.browsingDay) }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in calendar.selectDay(Date()) }
     }
 
-    private func dayButton(_ day: Date) -> some View {
+    private func dayButton(_ day: Date, distance: Int) -> some View {
         let selected = Calendar.current.isDate(day, inSameDayAs: calendar.browsingDay)
         let today = Calendar.current.isDateInToday(day)
         let hasEvents = !CalendarMonitor.events(calendar.weekEvents, on: day).isEmpty
@@ -74,13 +85,14 @@ struct CalendarCarousel: View {
                 Text(day.formatted(.dateTime.weekday(.narrow)))
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
                 Text(day.formatted(.dateTime.day()))
-                    .font(.system(size: 14, weight: selected ? .bold : .medium))
+                    .font(.system(size: selected ? 22 : 16, weight: selected ? .bold : .medium))
                     .foregroundStyle(today ? Color.accentColor : .white.opacity(selected ? 1 : 0.65))
                 Circle().fill(hasEvents ? Color.accentColor : .clear).frame(width: 3, height: 3)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(selected ? 0.12 : 0)))
+            .opacity(selected || today ? 1 : max(0.12, 0.8 - Double(distance) * 0.22))
+            .scaleEffect(selected ? 1 : 1 - Double(distance) * 0.08)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

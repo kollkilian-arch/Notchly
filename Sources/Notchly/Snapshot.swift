@@ -33,7 +33,7 @@ func renderExperimentalSnapshots(to dir: String) {
     }
     let media = MediaMonitor(preview: .init(
         track: Track(source: .spotify, title: "Midnight City", artist: "M83", album: "Hurry Up, We’re Dreaming",
-                     duration: 244, artworkURL: nil), playing: true, position: 92), artwork: artwork, accent: .systemCyan)
+                     duration: 244, artworkURL: nil), playing: true, position: 92, shuffling: true, canShuffle: true), artwork: artwork, accent: .systemCyan)
     let audio = AudioMonitor(preview: [
         AudioOutputDevice(id: 1, uid: "speakers", name: "MacBook Pro Speakers", transport: kAudioDeviceTransportTypeBuiltIn),
         AudioOutputDevice(id: 2, uid: "airpods", name: "AirPods Pro", transport: kAudioDeviceTransportTypeBluetooth),
@@ -46,6 +46,7 @@ func renderExperimentalSnapshots(to dir: String) {
     let variants: [(String, Bool, Bool, String, NotchTab)] = [
         ("glass-cards", true, true, "", .home),
         ("black-cards", true, false, "", .home),
+        ("calendar-empty", true, true, "", .home),
         ("calendar-first", true, true, swapped.json, .home),
         ("calendar-only", true, true, calendarOnly.json, .home),
         ("shelf-airdrop", true, true, "", .shelf),
@@ -56,6 +57,7 @@ func renderExperimentalSnapshots(to dir: String) {
         defaults.set(experimental, forKey: Pref.useExperimentalBranch)
         defaults.set(glass, forKey: Pref.glassDashboard)
         defaults.set(layout, forKey: Pref.dashboardLayout)
+        calendar.selectDay(name == "calendar-empty" ? Calendar.current.date(byAdding: .day, value: 3, to: now)! : now)
         let state = NotchState(defaults: nil)
         state.notchSize = CGSize(width: 190, height: 32)
         state.isOpen = true

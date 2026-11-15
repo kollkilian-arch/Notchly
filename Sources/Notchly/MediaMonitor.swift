@@ -44,6 +44,8 @@ final class MediaMonitor: NSObject, ObservableObject {
     @Published private(set) var artwork: NSImage?
     /// A vivid colour taken from the artwork (nil for greyscale art or when there is none).
     @Published private(set) var accent: NSColor?
+    @Published private(set) var isShuffling = false
+    @Published private(set) var canShuffle = false
 
     /// What the players broadcast. Used only as a "something changed" signal, so there is one
     /// parsing path (the AppleScript snapshot).
@@ -81,6 +83,8 @@ final class MediaMonitor: NSObject, ObservableObject {
         clock = PositionClock(base: snapshot.position, at: Date(), playing: snapshot.playing)
         self.artwork = artwork
         self.accent = accent
+        isShuffling = snapshot.shuffling
+        canShuffle = snapshot.canShuffle
     }
 
     /// - Parameters:
@@ -195,6 +199,18 @@ final class MediaMonitor: NSObject, ObservableObject {
     func next() { command("next track") }
     func previous() { command("previous track") }
 
+    func toggleShuffle() {
+        guard canShuffle, let source = track?.source else { return }
+        let target = !isShuffling
+        isShuffling = target
+        guard !isPreview else { return }
+        let property = source == .spotify ? "shuffling" : "shuffle enabled"
+        queue.async {
+            _ = Self.run("tell application \"\(source.rawValue)\" to set \(property) to \(target ? "true" : "false")")
+            DispatchQueue.main.async { self.poll() }
+        }
+    }
+
     /// Jumps to `seconds` in the current track.
     func seek(to seconds: Double) {
         guard let track, track.duration > 0 else { return }
@@ -251,6 +267,8 @@ final class MediaMonitor: NSObject, ObservableObject {
         var track: Track
         var playing: Bool
         var position: Double
+        var shuffling = false
+        var canShuffle = false
     }
 
     private func apply(_ s: Snapshot?) {
@@ -261,11 +279,15 @@ final class MediaMonitor: NSObject, ObservableObject {
             clock = PositionClock()
             artwork = nil
             accent = nil
+            isShuffling = false
+            canShuffle = false
             artworkKey = ""
             return
         }
         if track != s.track { track = s.track }
         isPlaying = s.playing
+        isShuffling = s.shuffling
+        canShuffle = s.canShuffle
         // Right after a seek, ignore polls that were already in flight (they carry the old position).
         if Date() >= positionLockedUntil {
             position = s.position
@@ -341,7 +363,7 @@ final class MediaMonitor: NSObject, ObservableObject {
             tell application "Spotify"
                 if player state is stopped then return ""
                 set t to current track
-                return (player state as text) & "||" & (name of t) & "||" & (artist of t) & "||" & (album of t) & "||" & (player position as text) & "||" & ((duration of t) as text) & "||" & (artwork url of t)
+                return (player state as text) & "||" & (name of t) & "||" & (artist of t) & "||" & (album of t) & "||" & (player position as text) & "||" & ((duration of t) as text) & "||" & (artwork url of t) & "||" & (shuffling as text) & "||" & (shuffling enabled as text)
             end tell
             """
         case .music:
@@ -349,11 +371,15 @@ final class MediaMonitor: NSObject, ObservableObject {
             tell application "Music"
                 if player state is stopped then return ""
                 set t to current track
-                return (player state as text) & "||" & (name of t) & "||" & (artist of t) & "||" & (album of t) & "||" & (player position as text) & "||" & ((duration of t) as text)
+                return (player state as text) & "||" & (name of t) & "||" & (artist of t) & "||" & (album of t) & "||" & (player position as text) & "||" & ((duration of t) as text) & "||||" & (shuffle enabled as text) & "||true"
             end tell
             """
         }
         guard let out = run(script)?.stringValue, !out.isEmpty else { return nil }
+        return parseSnapshot(out, source: source)
+    }
+
+    static func parseSnapshot(_ out: String, source: MediaSource) -> Snapshot? {
         let f = out.components(separatedBy: "||")
         guard f.count >= 6 else { return nil }
         // Spotify reports milliseconds, Music reports seconds.
@@ -361,8 +387,9 @@ final class MediaMonitor: NSObject, ObservableObject {
         let duration = source == .spotify ? rawDuration / 1000 : rawDuration
         let track = Track(
             source: source, title: f[1], artist: f[2], album: f[3], duration: duration,
-            artworkURL: f.count > 6 ? f[6] : nil
+            artworkURL: f.count > 6 && !f[6].isEmpty ? f[6] : nil
         )
-        return Snapshot(track: track, playing: f[0] == "playing", position: number(f[4]))
+        return Snapshot(track: track, playing: f[0] == "playing", position: number(f[4]),
+                        shuffling: f.count > 7 && f[7] == "true", canShuffle: f.count > 8 && f[8] == "true")
     }
 }

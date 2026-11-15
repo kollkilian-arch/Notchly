@@ -54,7 +54,7 @@ struct DashboardHome: View {
                                 Spacer()
                                 PlayerOutputButton(audio: audio)
                             }
-                            NowPlayingView(media: media)
+                            ExperimentalPlayer(media: media)
                                 .frame(maxHeight: .infinity)
                         }
                     case .calendar: CalendarCarousel(calendar: calendar)

@@ -9,13 +9,21 @@ A native SwiftUI/AppKit app, in the spirit of Alcove and Dynamic Island apps.
 The `experimental` branch previews the next dashboard. It keeps the closed notch and music outline,
 then opens into glass cards with a separate floating navigation strip. Use the layout button in the
 header to move or hide Music and Calendar, or switch the glass surface to black. Layout changes persist.
-The calendar keeps your selected day centred, supports dragging between dates, and shows per-day events
+The calendar keeps your selected day centred with fading neighbours and a large month label, supports
+two-finger horizontal trackpad swipes or click-and-drag between dates, and shows per-day events
 (including all-day events), meeting links, and event dots. The existing meeting reminder still follows
 upcoming meetings independently of the day you browse.
 
-Stored Shelf items have **AirDrop** in the toolbar and context menu. The Music card’s output button
-selects macOS sound devices, including available AirPlay outputs; **AirPlay & Sound Settings** opens
-macOS for discovery. This controls the Mac’s sound output. Spotify Connect remains in Spotify.
+The Shelf has separate **Files** and **AirDrop** drop areas. Drop on Files to store an item; drop on
+AirDrop to choose a recipient without storing it. Multiple files share in one chooser; temporary
+text and image assets are removed after sharing or cancellation. Stored items also have **AirDrop**
+in the toolbar and context menu.
+
+The Music card has shuffle and a native **AirPlay** discovery picker beside the playback controls.
+It discovers nearby speakers and TVs rather than relying on the already-connected Core Audio list.
+The output button in the card header still selects ordinary Mac sound devices. Shuffle reflects the
+player’s actual state and is disabled where the player reports that it is unavailable.
+Spotify Connect remains in Spotify.
 
 **Settings → About → Use experimental branch** selects stable or experimental updates. In an
 experimental build, switching it off also restores the classic interface immediately. **Install and

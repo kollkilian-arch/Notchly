@@ -22,7 +22,7 @@ struct ShelfView: View {
                 if experimental, let selected = shelf.selectedItem {
                     Button {
                         ShelfSharing.shared.share(selected) { shelf.errorMessage = $0 }
-                    } label: { Label("AirDrop", systemImage: "airdrop") }
+                    } label: { Label { Text("AirDrop") } icon: { AirDropSymbol().frame(width: 13, height: 13) } }
                     .buttonStyle(.plain)
                     .disabled(!ShelfSharing.canShare(selected))
                 }
@@ -36,47 +36,13 @@ struct ShelfView: View {
             .font(.system(size: 10, weight: .medium))
             .frame(height: 18)
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(targeted ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.04))
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(targeted ? Color.accentColor : Color.white.opacity(0.18),
-                                  style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-
-                if shelf.items.isEmpty {
-                    VStack(spacing: 4) {
-                        Image(systemName: "tray.and.arrow.down.fill").font(.system(size: 20))
-                        Text("Drop files, links, or text here").font(.system(size: 12, weight: .semibold))
-                        Text("Or paste a screenshot with ⌘V")
-                            .font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
-                    }
-                    .foregroundStyle(.white.opacity(targeted ? 0.95 : 0.6))
-                } else {
-                    ScrollViewReader { proxy in
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(shelf.items) { item in
-                                    ShelfTile(item: item, shelf: shelf).id(item.id)
-                                }
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                        }
-                        .onChange(of: shelf.selectedID) { _, id in
-                            if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
-                        }
-                        .onChange(of: shelf.items.map(\.id)) { _, _ in
-                            if let id = shelf.selectedID { proxy.scrollTo(id) }
-                        }
-                    }
-                }
+            HStack(spacing: 12) {
+                storageArea
+                if experimental { AirDropDropZone(shelf: shelf).frame(width: 220) }
             }
         }
         .background(ShelfKeyboardInput(isActive: isActive, shelf: shelf, pasteboard: pasteboard))
         .animation(.easeOut(duration: 0.15), value: targeted)
-        .onDrop(of: ShelfStore.dropTypes, isTargeted: $targeted) { providers in
-            shelf.handle(providers: providers)
-        }
         .alert("Shelf", isPresented: Binding(
             get: { isActive && shelf.errorMessage != nil },
             set: { if !$0 { shelf.errorMessage = nil } }
@@ -84,6 +50,47 @@ struct ShelfView: View {
             Button("OK") { shelf.errorMessage = nil }
         } message: { Text(shelf.errorMessage ?? "") }
     }
+    private var storageArea: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(targeted ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(targeted ? Color.accentColor : Color.white.opacity(0.18),
+                              style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+
+            if shelf.items.isEmpty {
+                VStack(spacing: 4) {
+                    Image(systemName: "tray.and.arrow.down.fill").font(.system(size: 20))
+                    Text("Drop files, links, or text here").font(.system(size: 12, weight: .semibold))
+                    Text("Or paste a screenshot with ⌘V")
+                        .font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
+                }
+                .foregroundStyle(.white.opacity(targeted ? 0.95 : 0.6))
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(shelf.items) { item in
+                                ShelfTile(item: item, shelf: shelf).id(item.id)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                    }
+                    .onChange(of: shelf.selectedID) { _, id in
+                        if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
+                    }
+                    .onChange(of: shelf.items.map(\.id)) { _, _ in
+                        if let id = shelf.selectedID { proxy.scrollTo(id) }
+                    }
+                }
+            }
+        }
+        .onDrop(of: ShelfStore.dropTypes, isTargeted: $targeted) { providers in
+            shelf.handle(providers: providers)
+        }
+    }
+
 }
 
 struct ShelfTile: View {

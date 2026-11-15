@@ -5,6 +5,7 @@ final class ShelfSharing: NSObject, NSSharingServiceDelegate {
     static let shared = ShelfSharing()
     private var service: NSSharingService?
     private var completion: ((String?) -> Void)?
+    private var temporaryPayload: AirDropPayload?
 
     static func items(for item: ShelfItem) -> [Any] {
         // Text snippets already have a real .txt file; images have their original PNG asset.
@@ -18,16 +19,31 @@ final class ShelfSharing: NSObject, NSSharingServiceDelegate {
     }
 
     func share(_ item: ShelfItem, completion: @escaping (String?) -> Void) {
-        guard service == nil else { completion("An AirDrop share is already open."); return }
-        guard Self.canShare(item), let service = NSSharingService(named: .sendViaAirDrop),
-              service.canPerform(withItems: Self.items(for: item)) else {
-            completion("AirDrop is unavailable for this item. Check that the file still exists and AirDrop is enabled.")
+        guard Self.canShare(item) else { completion("This item is no longer available."); return }
+        share(items: Self.items(for: item), payload: nil, completion: completion)
+    }
+
+    func share(payload: AirDropPayload, completion: @escaping (String?) -> Void) {
+        share(items: payload.urls.map { $0 as NSURL }, payload: payload, completion: completion)
+    }
+
+    private func share(items: [Any], payload: AirDropPayload?, completion: @escaping (String?) -> Void) {
+        guard service == nil else {
+            payload?.cleanUp()
+            completion("An AirDrop share is already open.")
+            return
+        }
+        guard !items.isEmpty, let service = NSSharingService(named: .sendViaAirDrop),
+              service.canPerform(withItems: items) else {
+            payload?.cleanUp()
+            completion("AirDrop is unavailable for these items. Check that AirDrop is enabled.")
             return
         }
         self.service = service
         self.completion = completion
+        temporaryPayload = payload
         service.delegate = self
-        service.perform(withItems: Self.items(for: item))
+        service.perform(withItems: items)
     }
 
     func sharingService(_ sharingService: NSSharingService, didShareItems items: [Any]) { finish(nil) }
@@ -37,8 +53,11 @@ final class ShelfSharing: NSObject, NSSharingServiceDelegate {
     }
 
     private func finish(_ error: String?) {
-        completion?(error)
+        let callback = completion
         completion = nil
         service = nil
+        temporaryPayload?.cleanUp()
+        temporaryPayload = nil
+        callback?(error)
     }
 }
