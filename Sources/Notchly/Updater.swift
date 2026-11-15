@@ -537,10 +537,14 @@ final class Updater: ObservableObject, @unchecked Sendable {
             return plist?["CFBundleShortVersionString"] as? String ?? "0"
         }
         do {
-            let release = try await fetchLatest(feed: feedURL)
+            let release = try await fetchLatest(feed: feedURL, channel: UpdateChannel.selected)
             let installed = versionOnDisk()
+            let installedInfo = NSDictionary(contentsOf: target.appendingPathComponent("Contents/Info.plist"))
+            let installedChannel = (installedInfo?["NotchlyUpdateChannel"] as? String)
+                .flatMap(UpdateChannel.init(rawValue:)) ?? .stable
             print("feed: \(release.tag) (installed: \(installed))")
-            guard isNewer(release.version, than: installed) else {
+            guard shouldOffer(release, currentVersion: installed, currentChannel: installedChannel,
+                              selectedChannel: UpdateChannel.selected) else {
                 print("RESULT: up-to-date")
                 return 0
             }

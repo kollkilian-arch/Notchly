@@ -74,9 +74,13 @@ final class CalendarCarouselTests: XCTestCase {
     }
 
     func testBrowsingPreviewDoesNotReplaceUpcomingMeetingData() {
-        let event = CalEvent(id: "future", title: "Future", start: date(2026, 12, 4, 10), end: date(2026, 12, 4, 11), color: .blue)
+        let local = Calendar.current
+        let day = local.date(from: DateComponents(year: 2026, month: 12, day: 4))!
+        let start = local.date(byAdding: .hour, value: 10, to: day)!
+        let end = local.date(byAdding: .hour, value: 11, to: day)!
+        let event = CalEvent(id: "future", title: "Future", start: start, end: end, color: .blue)
         let monitor = CalendarMonitor(preview: [event])
-        monitor.selectDay(date(2026, 12, 4))
+        monitor.selectDay(day)
         XCTAssertEqual(monitor.events, [event])
         XCTAssertEqual(CalendarMonitor.events(monitor.weekEvents, on: monitor.browsingDay).map(\.id), ["future"])
     }
