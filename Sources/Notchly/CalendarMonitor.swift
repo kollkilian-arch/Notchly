@@ -21,22 +21,57 @@ final class CalendarMonitor: ObservableObject {
     /// Meetings the user has already joined: no more indicator for these.
     @Published private(set) var joinedMeetings: Set<String> = []
 
-    private let store = EKEventStore()
-    private var timer: Timer?
+    /// Longest the list goes without a refresh: events that come into the 48-hour window as time
+    /// passes are the only thing that can change without a notification.
+    static let maxReloadInterval: TimeInterval = 30 * 60
 
+    private let store = EKEventStore()
+    private var reloadTimer: Timer?
+    private var observers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
+
+    /// Reloads when EventKit reports a change, when the Mac wakes, or when the clock, time zone or
+    /// day changes, and otherwise only when the next listed event ends. (The meeting indicator does
+    /// not depend on this: it is re-evaluated against the clock every second by the notch itself.)
     init() {
         refreshAuthorization()
-        NotificationCenter.default.addObserver(
-            forName: .EKEventStoreChanged, object: store, queue: .main
-        ) { [weak self] _ in self?.reload() }
-        // Also what makes the meeting indicator appear on time, so keep it fairly frequent.
-        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in self?.reload() }
+        observe(.EKEventStoreChanged, on: .default, object: store)
+        observe(.NSSystemClockDidChange, on: .default)
+        observe(.NSCalendarDayChanged, on: .default)
+        observe(NSNotification.Name.NSSystemTimeZoneDidChange, on: .default)
+        observe(NSWorkspace.didWakeNotification, on: NSWorkspace.shared.notificationCenter)
     }
 
     /// For the debug snapshot tool: fixed events, no EventKit access, no refresh timer.
     init(preview events: [CalEvent]) {
         self.events = events
         authorized = true
+    }
+
+    deinit {
+        reloadTimer?.invalidate()
+        for (center, token) in observers { center.removeObserver(token) }
+    }
+
+    private func observe(_ name: Notification.Name, on center: NotificationCenter, object: Any? = nil) {
+        let token = center.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in self?.reload() }
+        observers.append((center, token))
+    }
+
+    /// When the listed events next change by themselves: the moment the earliest one ends, but
+    /// never later than `maxReloadInterval`.
+    static func nextReload(after events: [CalEvent], now: Date) -> Date {
+        let cap = now.addingTimeInterval(maxReloadInterval)
+        let nextEnd = events.map(\.end).filter { $0 > now }.min()
+        // A second past the end, so the event is really over when the reload filters on `endDate > now`.
+        return min(cap, nextEnd.map { $0.addingTimeInterval(1) } ?? cap)
+    }
+
+    private func scheduleReload(now: Date) {
+        reloadTimer?.invalidate()
+        let fire = Self.nextReload(after: events, now: now)
+        let timer = Timer(fire: fire, interval: 0, repeats: false) { [weak self] _ in self?.reload() }
+        RunLoop.main.add(timer, forMode: .common)
+        reloadTimer = timer
     }
 
     // MARK: Meeting indicator
@@ -86,7 +121,7 @@ final class CalendarMonitor: ObservableObject {
         let now = Date()
         let end = Calendar.current.date(byAdding: .hour, value: 48, to: now) ?? now.addingTimeInterval(172_800)
         let predicate = store.predicateForEvents(withStart: now, end: end, calendars: nil)
-        events = store.events(matching: predicate)
+        let loaded: [CalEvent] = store.events(matching: predicate)
             .filter { !$0.isAllDay && $0.endDate > now }
             .sorted { $0.startDate < $1.startDate }
             .prefix(3)
@@ -98,5 +133,7 @@ final class CalendarMonitor: ObservableObject {
                          meeting: MeetingLinks.find(in: [$0.url?.absoluteString, $0.location,
                                                         $0.structuredLocation?.title, $0.notes]))
             }
+        if loaded != events { events = loaded }       // an unchanged list must not redraw the notch
+        scheduleReload(now: now)
     }
 }

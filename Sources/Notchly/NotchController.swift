@@ -150,6 +150,7 @@ final class NotchController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] open in
                 self?.panel.ignoresMouseEvents = !open
+                self?.media.setPositionTracking(open)      // the progress bar only matters while open
                 if !open { self?.panel.resignKey() }
             }
             .store(in: &cancellables)

@@ -19,9 +19,25 @@ struct Track: Equatable {
     var key: String { "\(source.rawValue)|\(title)|\(artist)|\(album)" }
 }
 
-/// Polls Spotify and Apple Music via AppleScript.
+/// Where the playhead is, extrapolated from the last real reading so nothing has to ask the player
+/// every second.
+struct PositionClock: Equatable {
+    var base: Double = 0
+    var at: Date = .distantPast
+    var playing = false
+
+    func value(at now: Date = Date()) -> Double {
+        playing ? base + max(0, now.timeIntervalSince(at)) : base
+    }
+}
+
+/// Follows Spotify and Apple Music through AppleScript, but only asks when something happened:
+/// both apps broadcast a distributed notification on every play, pause and track change, and
+/// launching or quitting them is observed through NSWorkspace. A slow fallback poll covers a missed
+/// notification. While the notch is open, the progress bar advances locally and is re-synced every
+/// few seconds, so nothing polls while it is closed.
 /// (The private MediaRemote framework is locked down for third-party apps on current macOS.)
-final class MediaMonitor: ObservableObject {
+final class MediaMonitor: NSObject, ObservableObject {
     @Published private(set) var track: Track?
     @Published private(set) var isPlaying = false
     @Published private(set) var position: Double = 0
@@ -29,15 +45,132 @@ final class MediaMonitor: ObservableObject {
     /// A vivid colour taken from the artwork (nil for greyscale art or when there is none).
     @Published private(set) var accent: NSColor?
 
+    /// What the players broadcast. Used only as a "something changed" signal, so there is one
+    /// parsing path (the AppleScript snapshot).
+    static let playbackNotifications = [
+        "com.apple.Music.playerInfo", "com.apple.iTunes.playerInfo", "com.spotify.client.PlaybackStateChanged",
+    ]
+    private static let playerBundleIDs: Set<String> = ["com.spotify.client", "com.apple.Music"]
+    /// While the notch is open, ask the player for the real position every this many seconds.
+    private static let resyncTicks = 10
+
     private let queue = DispatchQueue(label: "notchly.media")
-    private var timer: Timer?
+    private let fetch: () -> Snapshot?
+    private var fallbackTimer: Timer?
+    private var positionTimer: Timer?
+    private var pollWork: DispatchWorkItem?
     private var artworkKey = ""
     private var busy = false
+    private var pollAgain = false
     private var positionLockedUntil = Date.distantPast
+    private var clock = PositionClock()
+    private var trackingPosition = false
+    private var ticks = 0
+    private var lastEnabled: [Bool]
 
-    init() {
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.poll() }
+    /// - Parameters:
+    ///   - distributed: where the players post their playback notifications.
+    ///   - workspace: where app launch/quit and wake notifications come from.
+    ///   - fallbackInterval: how often to poll when no notification arrives (seconds).
+    ///   - fetch: reads the player state; replaced in tests.
+    init(distributed: NotificationCenter = DistributedNotificationCenter.default(),
+         workspace: NotificationCenter = NSWorkspace.shared.notificationCenter,
+         fallbackInterval: TimeInterval = 30,
+         fetch: @escaping () -> Snapshot? = MediaMonitor.snapshot) {
+        self.fetch = fetch
+        lastEnabled = MediaSource.allCases.map { Pref.bool($0.prefKey) }
+        super.init()
+
+        for name in Self.playbackNotifications {
+            if let center = distributed as? DistributedNotificationCenter {
+                // Without this, a background app has these held back until it becomes active.
+                center.addObserver(self, selector: #selector(playbackChanged), name: .init(name), object: nil,
+                                   suspensionBehavior: .deliverImmediately)
+            } else {
+                distributed.addObserver(self, selector: #selector(playbackChanged), name: .init(name), object: nil)
+            }
+        }
+        workspace.addObserver(self, selector: #selector(playerLaunched(_:)),
+                              name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(playerTerminated(_:)),
+                              name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(playbackChanged),
+                              name: NSWorkspace.didWakeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(defaultsChanged),
+                                               name: UserDefaults.didChangeNotification, object: nil)
+
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: fallbackInterval, repeats: true) { [weak self] _ in
+            self?.poll()
+        }
         poll()
+    }
+
+    deinit {
+        fallbackTimer?.invalidate()
+        positionTimer?.invalidate()
+        pollWork?.cancel()
+    }
+
+    // MARK: Events
+
+    @objc private func playbackChanged() { requestPoll() }
+
+    @objc private func playerLaunched(_ note: Notification) {
+        if isPlayer(note) { requestPoll(after: 1) }       // give it a moment to load its state
+    }
+
+    @objc private func playerTerminated(_ note: Notification) {
+        if isPlayer(note) { requestPoll() }
+    }
+
+    /// The Settings toggles for Spotify and Music apply at once.
+    @objc private func defaultsChanged() {
+        let enabled = MediaSource.allCases.map { Pref.bool($0.prefKey) }
+        guard enabled != lastEnabled else { return }
+        lastEnabled = enabled
+        requestPoll()
+    }
+
+    private func isPlayer(_ note: Notification) -> Bool {
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        return app?.bundleIdentifier.map(Self.playerBundleIDs.contains) ?? false
+    }
+
+    /// Several notifications arrive for one change (track change, state, artwork); ask once.
+    private func requestPoll(after delay: TimeInterval = 0.15) {
+        pollWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.poll() }
+        pollWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    // MARK: Progress bar
+
+    /// Call with `true` while the progress bar is visible (the notch is open). It then advances
+    /// locally every second and is re-read from the player every few seconds; when `false`,
+    /// nothing runs.
+    func setPositionTracking(_ on: Bool) {
+        guard on != trackingPosition else { return }
+        trackingPosition = on
+        positionTimer?.invalidate()
+        positionTimer = nil
+        guard on else { return }
+        if isPlaying, Date() >= positionLockedUntil { position = clamped(clock.value()) }   // no stale flash
+        ticks = 0
+        positionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tickPosition() }
+        poll()
+    }
+
+    private func tickPosition() {
+        guard isPlaying else { return }
+        ticks += 1
+        if ticks % Self.resyncTicks == 0 { poll(); return }
+        if Date() >= positionLockedUntil { position = clamped(clock.value()) }
+    }
+
+    private func clamped(_ seconds: Double) -> Double {
+        guard let duration = track?.duration, duration > 0 else { return seconds }
+        return min(seconds, duration)
     }
 
     // MARK: Controls
@@ -52,6 +185,7 @@ final class MediaMonitor: ObservableObject {
         let target = min(max(seconds, 0), track.duration)
         let source = track.source
         position = target                                       // move the bar immediately
+        clock = PositionClock(base: target, at: Date(), playing: isPlaying)
         positionLockedUntil = Date().addingTimeInterval(0.8)
         queue.async {
             _ = Self.run("tell application \"\(source.rawValue)\" to set player position to \(Int(target))")
@@ -66,25 +200,33 @@ final class MediaMonitor: ObservableObject {
             DispatchQueue.main.async { self.poll() }
         }
         // Optimistic UI for play/pause.
-        if verb == "playpause" { isPlaying.toggle() }
+        if verb == "playpause" {
+            isPlaying.toggle()
+            clock = PositionClock(base: clock.value(), at: Date(), playing: isPlaying)
+        }
     }
 
     // MARK: Polling
 
     private func poll() {
-        guard !busy else { return }
+        // A change that arrives while a read is in flight must not be dropped: that read may predate it.
+        guard !busy else { pollAgain = true; return }
         busy = true
         queue.async { [weak self] in
             guard let self else { return }
-            let snapshot = Self.snapshot()
+            let snapshot = self.fetch()
             DispatchQueue.main.async {
                 self.busy = false
                 self.apply(snapshot)
+                if self.pollAgain {
+                    self.pollAgain = false
+                    self.poll()
+                }
             }
         }
     }
 
-    private struct Snapshot {
+    struct Snapshot {
         var track: Track
         var playing: Bool
         var position: Double
@@ -95,6 +237,7 @@ final class MediaMonitor: ObservableObject {
             if track != nil { track = nil }
             isPlaying = false
             position = 0
+            clock = PositionClock()
             artwork = nil
             accent = nil
             artworkKey = ""
@@ -103,7 +246,10 @@ final class MediaMonitor: ObservableObject {
         if track != s.track { track = s.track }
         isPlaying = s.playing
         // Right after a seek, ignore polls that were already in flight (they carry the old position).
-        if Date() >= positionLockedUntil { position = s.position }
+        if Date() >= positionLockedUntil {
+            position = s.position
+            clock = PositionClock(base: s.position, at: Date(), playing: s.playing)
+        }
         loadArtworkIfNeeded(for: s.track)
     }
 
@@ -154,7 +300,7 @@ final class MediaMonitor: ObservableObject {
         Double(s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")) ?? 0
     }
 
-    private static func snapshot() -> Snapshot? {
+    static func snapshot() -> Snapshot? {
         var paused: Snapshot?
         for source in MediaSource.allCases {
             guard Pref.bool(source.prefKey),
