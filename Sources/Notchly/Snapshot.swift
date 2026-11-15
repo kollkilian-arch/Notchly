@@ -209,6 +209,9 @@ func renderSnapshots(to dir: String) {
     let nflFinal = Game(id: "nfl/3", leagueID: "nfl", leagueName: "NFL", start: Date().addingTimeInterval(-6 * 3600),
                         state: .final, detail: "Final", home: nflSide("20", "Giants", "NYG", 17), away: nflSide("28", "Commanders", "WSH", 24))
     let scoresNFL = ScoresMonitor(preview: [nflRedZone, nflMidfield, nflFinal], live: nflRedZone)
+    let scoresNFLAway = ScoresMonitor(preview: [nflMidfield], live: nflMidfield)       // away team has the ball
+    let scoresNFLFlash = ScoresMonitor(preview: [nflRedZone], live: nflRedZone,
+                                       flashes: ["nfl/1": ScoresMonitor.Flash(homeScored: true, until: Date().addingTimeInterval(60))])
     let scoresList = ScoresMonitor(preview: [liveGame, finalGame, nextGame], live: liveGame)
     let scoresNone = ScoresMonitor(preview: [], live: nil)
     let scoresLive = ScoresMonitor(preview: [liveGame], live: liveGame)
@@ -344,6 +347,9 @@ func renderSnapshots(to dir: String) {
         ("closed-meeting-with-timer", false, .home, limitsUsage, runningTimer),     // timer outranks the meeting
         ("scores-tab", true, .scores, limitsUsage, idleTimer),
         ("scores-nfl", true, .scores, limitsUsage, idleTimer),
+        ("closed-nfl-home-ball", false, .home, limitsUsage, idleTimer),
+        ("closed-nfl-away-ball", false, .home, limitsUsage, idleTimer),
+        ("closed-nfl-flash", false, .home, limitsUsage, idleTimer),
         ("scores-empty", true, .scores, limitsUsage, idleTimer),
         ("closed-score-live", false, .home, limitsUsage, idleTimer),
         ("closed-score-flash", false, .home, limitsUsage, idleTimer),
@@ -362,7 +368,8 @@ func renderSnapshots(to dir: String) {
                              hud: hud,
                              shelf: shelf, usage: usage, timer: timer,
                              lock: name == "closed-locked" ? lockedLock : (name == "closed-unlocking" ? unlockingLock : idleLock),
-                             scores: ["scores-tab": scoresList, "scores-nfl": scoresNFL, "scores-empty": scoresNone, "closed-score-live": scoresLive,
+                             scores: ["scores-tab": scoresList, "scores-nfl": scoresNFL, "closed-nfl-home-ball": scoresNFL,
+                                      "closed-nfl-away-ball": scoresNFLAway, "closed-nfl-flash": scoresNFLFlash, "scores-empty": scoresNone, "closed-score-live": scoresLive,
                                       "closed-score-flash": scoresFlash, "closed-score-with-meeting": scoresLive][name] ?? scoresNone)
             .environment(\.colorScheme, .dark)
             .frame(width: width, height: 202)

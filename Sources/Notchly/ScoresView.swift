@@ -150,10 +150,13 @@ struct GameRow: View {
 
 /// Small football next to the team that has the ball.
 struct PossessionBall: View {
+    /// Orange inside the opponent's 20 (the red zone), brown otherwise.
+    var redZone = false
+
     var body: some View {
         Image(systemName: "football.fill")
             .font(.system(size: 9))
-            .foregroundStyle(Color(red: 0.76, green: 0.45, blue: 0.22))
+            .foregroundStyle(redZone ? Color.orange : Color(red: 0.76, green: 0.45, blue: 0.22))
             .help("Has the ball")
     }
 }
@@ -185,13 +188,20 @@ struct ScoreWing: View {
             let side = leading ? game.home : game.away
             let flashing = flash.map { $0.until > context.date && $0.homeScored == leading } ?? false
             let score = side.score.map(String.init) ?? "–"
-            Text(leading ? "\(side.code) \(score)" : "\(score) \(side.code)")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(flashing ? Color.green : Color.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .animation(.easeInOut(duration: 0.3), value: flashing)
+            let hasBall = game.situation?.possessionTeamID == side.teamID
+            let redZone = game.situation?.isRedZone ?? false
+            HStack(spacing: 3) {
+                // The football sits on the outer edge, next to the team that has the ball.
+                if leading && hasBall { PossessionBall(redZone: redZone) }
+                Text(leading ? "\(side.code) \(score)" : "\(score) \(side.code)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(flashing ? Color.green : Color.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .animation(.easeInOut(duration: 0.3), value: flashing)
+                if !leading && hasBall { PossessionBall(redZone: redZone) }
+            }
         }
     }
 }
