@@ -29,6 +29,34 @@ the notch, or the menu bar item).
 - A Mac with a notch, running macOS 14 or later (developed and tested on macOS 27 only)
 - Xcode or the Xcode command line tools (Swift 5.9+)
 
+## Install a release
+
+If you were sent `Notchly-<version>.zip` (or download it from the repo's Releases page):
+
+1. Optionally verify it: `shasum -a 256 -c Notchly-<version>.zip.sha256` (run next to the zip).
+2. Unzip and move **Notchly.app** to `/Applications`.
+3. Open it. macOS will block the first launch, because the app is signed with a local certificate and is
+   **not notarized** (that needs a paid Apple Developer account). Allow it once, either way:
+   - **System Settings → Privacy & Security → scroll down → "Open Anyway"** (after the blocked launch), or
+   - in Terminal: `xattr -dr com.apple.quarantine /Applications/Notchly.app`, then open it again.
+4. Grant the permissions it asks for (see below). Because every release is signed with the same certificate,
+   macOS keeps your approvals when you update to a newer version.
+
+Only replacing the macOS volume/brightness overlay needs the Accessibility permission; the other features
+work without it (Calendar and Automation each unlock their own feature).
+
+## Making a release (for the maintainer)
+
+```bash
+./setup-signing.sh      # once
+./release.sh            # builds, signs, checks, and writes dist/Notchly-<version>.zip + .sha256
+```
+
+The version is read from `Resources/Info.plist` (`CFBundleShortVersionString`); bump it first. `release.sh`
+refuses to run without the stable signing identity, because an ad-hoc signature would make every release look
+like a different app to macOS. Then tag the commit (`git tag v<version> && git push origin v<version>`) and
+attach the zip and checksum to a GitHub release for that tag. `dist/` is git-ignored on purpose.
+
 ## Build and run
 
 ```bash
@@ -85,3 +113,7 @@ mkdir -p /tmp/snap && build/Notchly.app/Contents/MacOS/Notchly --snapshot /tmp/s
 ```
 
 Set `NOTCHLY_LIVE_USAGE=1` or `NOTCHLY_LIVE_SCORES=1` to also test the real Claude-usage and score feeds.
+
+## License
+
+[MIT](LICENSE) © 2026 kollkilian-arch

@@ -3,6 +3,9 @@
 .swiftpm/
 build/
 
+# Packaged releases (attach these to a GitHub release instead of committing them)
+dist/
+
 # macOS
 .DS_Store
 
