@@ -72,6 +72,9 @@ jobs:
           echo "SIGN_IDENTITY=Notchly Release Signing" >> "$GITHUB_ENV"
           echo "SIGNATURE=release certificate (stable: macOS keeps permissions across updates)" >> "$GITHUB_ENV"
 
+      - name: Test
+        run: swift test
+
       - name: Build and package
         run: ./release.sh
 
@@ -101,10 +104,15 @@ jobs:
           See the [README](https://github.com/$GITHUB_REPOSITORY#readme) for features and notes.
           EOF
 
+          RELEASE_FLAGS=()
+          if [[ "$VERSION" == *-experimental.* ]]; then
+            RELEASE_FLAGS+=(--prerelease --latest=false)
+          fi
+
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists: replacing its files."
             gh release upload "$TAG" "$ZIP" "$ZIP.sha256" --clobber
           else
             gh release create "$TAG" "$ZIP" "$ZIP.sha256" \
-              --verify-tag --title "Notchly $VERSION" --notes-file release-notes.md
+              --verify-tag --title "Notchly $VERSION" --notes-file release-notes.md "${RELEASE_FLAGS[@]}"
           fi

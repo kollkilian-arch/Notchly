@@ -111,6 +111,12 @@ work without it (Calendar and Automation each unlock their own feature).
 
 ## Updates
 
+Under **Settings → About**, **Use experimental branch** opts into preview releases from the
+`experimental` branch. Choose **Install and Restart** to change builds. Switch the toggle off to
+return to stable releases, including an older stable version. Both channels verify checksums and
+the signing certificate, and preserve your Shelf. Experimental prereleases do not replace the
+latest stable release on GitHub.
+
 Notchly checks this repository's GitHub releases about once a day (switch it off, or check by hand, under
 **Settings → About**, or use *Check for Updates…* in the menu bar item). When a newer release exists, the gear in
 the notch gets an orange dot and the menu bar icon changes; **Install and Restart** then:

@@ -4,6 +4,8 @@ import Foundation
 /// `@AppStorage`; the rest of the app reads them with `Pref.bool` / `Pref.double` at the moment
 /// they matter, so changes in the settings window apply immediately.
 enum Pref {
+    static let useExperimentalBranch = "useExperimentalBranch"
+
     // Updates
     static let autoCheckUpdates = "autoCheckUpdates"
     static let lastUpdateCheck = "lastUpdateCheck"             // seconds since 1970
@@ -48,6 +50,7 @@ enum Pref {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             autoCheckUpdates: true,
+            useExperimentalBranch: UpdateChannel.current == .experimental,
             openOnHover: true,
             hoverDelay: 0.0,
             closeDelay: 0.25,

@@ -87,6 +87,7 @@ final class Updater: ObservableObject, @unchecked Sendable {
     @Published private(set) var status: Status = .none
 
     private var timer: Timer?
+    private var availableChannel: UpdateChannel?
 
     private init() {
         let stamp = UserDefaults.standard.double(forKey: Pref.lastUpdateCheck)
@@ -101,7 +102,23 @@ final class Updater: ObservableObject, @unchecked Sendable {
 
     static var feedURL: URL {
         if let override = feedOverride, let url = URL(string: override) { return url }
-        return URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest")!
+        return feedURL(for: UpdateChannel.selected)
+    }
+
+    static func feedURL(for channel: UpdateChannel) -> URL {
+        let suffix = channel == .stable ? "releases/latest" : "releases?per_page=100"
+        return URL(string: "https://api.github.com/repos/\(owner)/\(repo)/\(suffix)")!
+    }
+
+    /// Clear the previous channel's offer before checking its replacement.
+    func channelChanged() {
+        guard phase == .idle else { return }
+        available = nil
+        availableChannel = nil
+        lastChecked = nil
+        UserDefaults.standard.removeObject(forKey: Pref.lastUpdateCheck)
+        status = .none
+        checkForUpdates(userInitiated: true)
     }
 
     static var currentVersion: String {
@@ -130,15 +147,23 @@ final class Updater: ObservableObject, @unchecked Sendable {
         guard phase == .idle else { return }
         phase = .checking
         if userInitiated { status = .none }
+        let channel = UpdateChannel.selected
 
         Task {
             do {
-                let release = try await Self.fetchLatest(feed: Self.feedURL)
+                let release = try await Self.fetchLatest(feed: Self.feedURL, channel: channel)
                 await MainActor.run {
+                    guard channel == UpdateChannel.selected else {
+                        self.phase = .idle
+                        self.channelChanged()
+                        return
+                    }
                     self.lastChecked = Date()
                     UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Pref.lastUpdateCheck)
-                    if Self.isNewer(release.version, than: Self.currentVersion) {
+                    if Self.shouldOffer(release, currentVersion: Self.currentVersion,
+                                        currentChannel: UpdateChannel.current, selectedChannel: channel) {
                         self.available = release
+                        self.availableChannel = channel
                         self.status = .none
                         // Test mode only (needs NOTCHLY_UPDATE_FEED too): install without a click.
                         if Self.allowInsecure, ProcessInfo.processInfo.environment["NOTCHLY_AUTOINSTALL"] == "1" {
@@ -148,6 +173,7 @@ final class Updater: ObservableObject, @unchecked Sendable {
                         }
                     } else {
                         self.available = nil
+                        self.availableChannel = nil
                         self.status = .upToDate
                     }
                     self.phase = .idle
@@ -208,7 +234,8 @@ final class Updater: ObservableObject, @unchecked Sendable {
     var canInstallInPlace: Bool { installBlockedReason == nil }
 
     func installAvailableUpdate() {
-        guard let release = available, phase == .idle else { return }
+        guard let release = available, phase == .idle,
+              availableChannel == nil || availableChannel == UpdateChannel.selected else { return }
         if let reason = installBlockedReason {
             status = .failed(reason)
             return
@@ -249,7 +276,7 @@ final class Updater: ObservableObject, @unchecked Sendable {
 
     // MARK: Feed
 
-    static func fetchLatest(feed: URL) async throws -> AppRelease {
+    static func fetchLatest(feed: URL, channel: UpdateChannel = .stable) async throws -> AppRelease {
         var request = URLRequest(url: feed, timeoutInterval: 15)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Notchly/\(currentVersion)", forHTTPHeaderField: "User-Agent")
@@ -261,7 +288,7 @@ final class Updater: ObservableObject, @unchecked Sendable {
 
         guard let http = response as? HTTPURLResponse else { throw UpdateError.badResponse }
         switch http.statusCode {
-        case 200: return try parseRelease(data)
+        case 200: return try parseFeed(data, channel: channel)
         case 404: throw UpdateError.notFound
         case 403, 429: throw UpdateError.rateLimited
         default: throw UpdateError.network("HTTP \(http.statusCode)")
@@ -269,11 +296,13 @@ final class Updater: ObservableObject, @unchecked Sendable {
     }
 
     /// Parses GitHub's "latest release" JSON.
-    static func parseRelease(_ data: Data) throws -> AppRelease {
+    static func parseRelease(_ data: Data, channel: UpdateChannel = .stable) throws -> AppRelease {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = root["tag_name"] as? String,
               let page = (root["html_url"] as? String).flatMap(URL.init(string:)) else { throw UpdateError.badResponse }
-        if root["draft"] as? Bool == true || root["prerelease"] as? Bool == true { throw UpdateError.notFound }
+        if root["draft"] as? Bool == true || !channel.accepts(tag: tag, prerelease: root["prerelease"] as? Bool ?? false) {
+            throw UpdateError.notFound
+        }
 
         let assets = (root["assets"] as? [[String: Any]] ?? []).compactMap { a -> AppRelease.Asset? in
             guard let name = a["name"] as? String,
@@ -286,19 +315,52 @@ final class Updater: ObservableObject, @unchecked Sendable {
                           sha256: assets.first { $0.name.hasSuffix(".zip.sha256") })
     }
 
+    static func parseFeed(_ data: Data, channel: UpdateChannel) throws -> AppRelease {
+        if let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            let releases = list.compactMap { entry -> AppRelease? in
+                guard let encoded = try? JSONSerialization.data(withJSONObject: entry) else { return nil }
+                return try? parseRelease(encoded, channel: channel)
+            }
+            guard let latest = releases.max(by: { isNewer($1.version, than: $0.version) }) else {
+                throw UpdateError.notFound
+            }
+            return latest
+        }
+        return try parseRelease(data, channel: channel)
+    }
+
+    static func shouldOffer(_ release: AppRelease, currentVersion: String,
+                            currentChannel: UpdateChannel, selectedChannel: UpdateChannel) -> Bool {
+        currentChannel != selectedChannel || isNewer(release.version, than: currentVersion)
+    }
+
     /// Numeric, component-wise comparison: "0.1.10" is newer than "0.1.9".
     static func isNewer(_ remote: String, than local: String) -> Bool {
         func parts(_ v: String) -> [Int] {
             v.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
         }
-        let r = parts(remote), l = parts(local)
+        let remotePieces = remote.split(separator: "-", maxSplits: 1)
+        let localPieces = local.split(separator: "-", maxSplits: 1)
+        let r = parts(String(remotePieces.first ?? "")), l = parts(String(localPieces.first ?? ""))
         guard !r.isEmpty, remote.first?.isNumber == true else { return false }
         for i in 0..<max(r.count, l.count) {
             let a = i < r.count ? r[i] : 0
             let b = i < l.count ? l[i] : 0
             if a != b { return a > b }
         }
-        return false
+        // Stable wins over a prerelease with the same numeric version. Compare prerelease
+        // identifiers numerically (experimental.10 follows experimental.9).
+        if remotePieces.count == 1 { return localPieces.count > 1 }
+        guard localPieces.count > 1 else { return false }
+        let rp = remotePieces[1].split(separator: "."), lp = localPieces[1].split(separator: ".")
+        for i in 0..<min(rp.count, lp.count) {
+            if rp[i] == lp[i] { continue }
+            if let a = Int(rp[i]), let b = Int(lp[i]) { return a > b }
+            if Int(rp[i]) != nil { return false }
+            if Int(lp[i]) != nil { return true }
+            return rp[i] > lp[i]
+        }
+        return rp.count > lp.count
     }
 
     // MARK: Download and verification
@@ -343,6 +405,12 @@ final class Updater: ObservableObject, @unchecked Sendable {
             }
             guard incoming["CFBundleShortVersionString"] as? String == release.version else {
                 throw UpdateError.wrongApp("version doesn't match the release")
+            }
+
+            let expectedChannel: UpdateChannel = release.version.contains("-experimental.") ? .experimental : .stable
+            let incomingChannel = (incoming["NotchlyUpdateChannel"] as? String).flatMap(UpdateChannel.init(rawValue:)) ?? .stable
+            guard incomingChannel == expectedChannel else {
+                throw UpdateError.wrongApp("release channel doesn't match the download")
             }
 
             // 5. signed by the same developer as the running app?

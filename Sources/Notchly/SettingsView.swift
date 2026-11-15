@@ -148,11 +148,27 @@ private struct GeneralSettings: View {
 private struct AboutSettings: View {
     @ObservedObject private var updater = Updater.shared
     @AppStorage(Pref.autoCheckUpdates) private var autoCheck = true
+    @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
 
     var body: some View {
         Form {
             Section {
                 LabeledContent("Notchly", value: "Version \(Updater.currentVersion)")
+                LabeledContent("Build channel", value: UpdateChannel.current.rawValue.capitalized)
+            }
+
+            Section {
+                Toggle("Use experimental branch", isOn: Binding(
+                    get: { experimental },
+                    set: { experimental = $0; updater.channelChanged() }
+                ))
+                    .disabled(updater.phase != .idle)
+            } header: {
+                Text("Release channel")
+            } footer: {
+                Text(UpdateChannel.current == .experimental
+                     ? "Try the glass dashboard and new features immediately, or switch off to restore the classic interface. Updates follow the selected channel; Install and Restart switches installed builds. Your Shelf and layout are kept."
+                     : "Opt into builds from the experimental branch. Check for Updates, then Install and Restart to switch builds. Switch this off to return to stable releases. Your Shelf is kept.")
             }
 
             Section {
@@ -190,7 +206,7 @@ private struct AboutSettings: View {
 
     private var statusTitle: String {
         if updater.phase == .checking { return "Checking for updates…" }
-        if let release = updater.available { return "Version \(release.version) is available" }
+        if let release = updater.available { return "\(UpdateChannel.selected.rawValue.capitalized) \(release.version) is available" }
         switch updater.status {
         case .upToDate: return "Notchly is up to date"
         case .failed: return "Couldn't check for updates"
