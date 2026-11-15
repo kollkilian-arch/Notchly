@@ -1,0 +1,15 @@
+# SwiftPM / build output
+.build/
+.swiftpm/
+build/
+
+# macOS
+.DS_Store
+
+# Xcode (if you ever open the package there)
+*.xcodeproj
+xcuserdata/
+DerivedData/
+
+# Local scratch
+*.log
