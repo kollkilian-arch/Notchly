@@ -233,9 +233,8 @@ private struct AboutSettings: View {
                 }
                 if case .failed(let message) = updater.status {
                     Text(message).font(.caption).foregroundStyle(.red)
-                } else if !updater.canInstallInPlace {
-                    Text("Notchly can't replace itself where it is now. Use Release Notes to download the update and replace the app yourself.")
-                        .font(.caption).foregroundStyle(.secondary)
+                } else if let reason = updater.installBlockedReason {
+                    Text(reason).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -427,6 +426,7 @@ private struct HomeSettings: View {
     @AppStorage(Pref.enableSpotify) private var spotify = true
     @AppStorage(Pref.enableMusic) private var music = true
     @AppStorage(Pref.tintFromArtwork) private var tint = true
+    @AppStorage(Pref.closedMusicProgress) private var closedProgress = true
     @AppStorage(Pref.showCalendar) private var calendar = true
     @AppStorage(Pref.showJoinButton) private var joinButton = true
     @AppStorage(Pref.meetingIndicator) private var meetingIndicator = true
@@ -438,6 +438,7 @@ private struct HomeSettings: View {
                 Toggle("Spotify", isOn: $spotify)
                 Toggle("Apple Music", isOn: $music)
                 Toggle("Tint the progress bar and equalizer with the album colours", isOn: $tint)
+                Toggle("Show song progress around the closed notch", isOn: $closedProgress)
             } header: {
                 Text("Now Playing sources")
             } footer: {
@@ -473,9 +474,17 @@ private struct HUDSettings: View {
     @AppStorage(Pref.hudVolume) private var volume = true
     @AppStorage(Pref.hudBrightness) private var brightness = true
     @AppStorage(Pref.hudDuration) private var duration = 1.4
+    @AppStorage(Pref.showAudioActivity) private var audioConnections = true
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Show audio device connections in the notch", isOn: $audioConnections)
+            } header: {
+                Text("Audio devices")
+            } footer: {
+                Text("Use the headphones tab to choose a sound output and see available device battery levels.")
+            }
             Section {
                 Toggle("Show volume in the notch", isOn: $volume)
                 Toggle("Show brightness in the notch", isOn: $brightness)

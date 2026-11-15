@@ -1,11 +1,26 @@
 import SwiftUI
+import CoreAudio
 
 /// Debug helper: `Notchly --snapshot <dir>` renders the notch views to PNGs and exits.
 /// Handy for checking layout without screen-recording permission.
 @MainActor
 func renderSnapshots(to dir: String) {
-    let state = NotchState()
-    state.notchSize = NotchGeometry.find().size
+    let notchSize = NotchGeometry.find().size
+    // Deterministic outline previews, including the ends of the song; no player needed.
+    for (name, fraction) in [("start", 0.0), ("middle", 0.5), ("end", 1.0)] {
+        let height = notchSize.height + 2
+        let preview = Color.black
+            .overlay {
+                ClosedMusicProgress(position: fraction * 200, duration: 200,
+                                    playing: false, tint: .cyan)
+            }
+            .clipShape(NotchShape(topRadius: 6, bottomRadius: 12))
+            .frame(width: notchSize.width + 100, height: height)
+            .frame(width: 440, height: 80, alignment: .top)
+            .background(Color(white: 0.55))
+        capture(preview, size: NSSize(width: 440, height: 80), dark: true,
+                to: dir, name: "closed-music-progress-\(name)")
+    }
     let media = MediaMonitor()
     let battery = BatteryMonitor()
     let calendar = CalendarMonitor()
@@ -14,6 +29,14 @@ func renderSnapshots(to dir: String) {
     let storeURL = URL(fileURLWithPath: dir).appendingPathComponent("test-shelf.json")
     try? FileManager.default.removeItem(at: storeURL)
     let shelf = ShelfStore(storeURL: storeURL)
+    let speakers = AudioOutputDevice(id: 1, uid: "preview-speakers", name: "MacBook Pro Speakers",
+                                     transport: kAudioDeviceTransportTypeBuiltIn)
+    let headphones = AudioOutputDevice(id: 2, uid: "preview-airpods", name: "AirPods Pro",
+                                       transport: kAudioDeviceTransportTypeBluetooth,
+                                       battery: AudioDeviceBattery(left: 84, right: 80, caseLevel: 92))
+    let displayAudio = AudioOutputDevice(id: 3, uid: "preview-display", name: "Studio Display",
+                                         transport: kAudioDeviceTransportTypeDisplayPort)
+    let audioPreview = AudioMonitor(preview: [headphones, speakers, displayAudio], selected: 2)
 
     // Usage: fixed preview states (no Keychain/network), plus a check of the JSON parser.
     let sample = #"{"five_hour":{"utilization":37.0,"resets_at":"2026-11-15T17:00:00.123456+00:00"},"seven_day":{"utilization":84,"resets_at":"2026-11-19T09:00:00Z"},"seven_day_opus":null}"#
@@ -22,10 +45,26 @@ func renderSnapshots(to dir: String) {
     let t0 = Date()
     let local = UsageMonitor.scanLocalLogs()
     print("local logs: last5h=\(local.last5h) last7d=\(local.last7d) tokens, scanned in \(String(format: "%.2f", Date().timeIntervalSince(t0))) s")
+    // Heatmaps: a made-up working week, and what this Mac's real Claude Code logs show.
+    let heatNow = Date()
+    let heatStart = UsageHeatmap.windowStart(now: heatNow)
+    var sampleBuckets = [Int](repeating: 0, count: UsageHeatmap.days * UsageHeatmap.hoursPerDay)
+    for day in 0..<UsageHeatmap.days {
+        for hour in 8...22 where (day * 7 + hour * 13) % 11 > 3 { sampleBuckets[day * 24 + hour] = ((day + 2) * (hour - 6) * 1_900) % 170_000 + 4_000 }
+    }
+    let sampleHeatmap = UsageHeatmap(start: heatStart, now: heatNow, tokens: sampleBuckets)
+    let heatT0 = Date()
+    let realEvents = UsageMonitor.readLocalEvents(since: heatStart)
+    let realHeatmap = UsageHeatmap.build(events: realEvents, start: heatStart, now: heatNow)
+    print("heatmap (real logs): \(realEvents.count) messages, peak \(realHeatmap.peak) tokens/h, read in \(String(format: "%.2f", Date().timeIntervalSince(heatT0))) s")
+    let realHeatUsage = UsageMonitor(preview: .limits(LimitUsage(
+        fiveHour: LimitWindow(percent: 37, resetsAt: Date().addingTimeInterval(2 * 3600 + 10 * 60)),
+        sevenDay: LimitWindow(percent: 84, resetsAt: Date().addingTimeInterval(3 * 86400)),
+        plan: "pro", fetched: Date())), heatmap: realHeatmap)
     let limitsUsage = UsageMonitor(preview: .limits(LimitUsage(
         fiveHour: LimitWindow(percent: 37, resetsAt: Date().addingTimeInterval(2 * 3600 + 10 * 60)),
         sevenDay: LimitWindow(percent: 84, resetsAt: Date().addingTimeInterval(3 * 86400)),
-        plan: "pro", fetched: Date())))
+        plan: "pro", fetched: Date())), heatmap: sampleHeatmap)
     let highUsage = UsageMonitor(preview: .limits(LimitUsage(
         fiveHour: LimitWindow(percent: 87, resetsAt: Date().addingTimeInterval(50 * 60)),
         sevenDay: LimitWindow(percent: 41, resetsAt: Date().addingTimeInterval(2 * 86400)),
@@ -130,7 +169,15 @@ func renderSnapshots(to dir: String) {
     updateCheck("release: prerelease is ignored", (try? Updater.parseRelease(Data(#"{"tag_name":"v9","html_url":"https://x.y","prerelease":true}"#.utf8))) == nil)
     updateCheck("release: draft is ignored", (try? Updater.parseRelease(Data(#"{"tag_name":"v9","html_url":"https://x.y","draft":true}"#.utf8))) == nil)
     updateCheck("release: garbage is rejected", (try? Updater.parseRelease(Data("not json".utf8))) == nil)
-    updateCheck("release: no assets means nothing to install", (try? Updater.parseRelease(Data(#"{"tag_name":"v0.1.3","html_url":"https://x.y"}"#.utf8)))?.zip == nil)
+    updateCheck("translocated path is recognised",
+                Updater.isTranslocatedPath(URL(fileURLWithPath: "/private/var/folders/hn/abc/T/AppTranslocation/3AA87629-664A/d/Notchly.app")))
+    updateCheck("normal paths are not translocated",
+                !Updater.isTranslocatedPath(URL(fileURLWithPath: "/Applications/Notchly.app"))
+                && !Updater.isTranslocatedPath(URL(fileURLWithPath: "/Users/x/Downloads/Notchly.app")))
+    let notTranslocated = Updater.originalLocation(ofTranslocated: URL(fileURLWithPath: "/Applications/Notchly.app"))
+    updateCheck("original-location lookup does not invent a path for a normal app",
+                notTranslocated == nil || notTranslocated?.path == "/Applications/Notchly.app")
+    updateCheck("release: no assets means nothing to install",(try? Updater.parseRelease(Data(#"{"tag_name":"v0.1.3","html_url":"https://x.y"}"#.utf8)))?.zip == nil)
     print("updates: \(updateChecks - updateFails.count)/\(updateChecks) checks pass" + (updateFails.isEmpty ? "" : " — FAILED: \(updateFails)"))
     let sampleRelease = AppRelease(
         version: "0.1.3", tag: "v0.1.3", pageURL: URL(string: "https://github.com/kollkilian-arch/Notchly/releases/tag/v0.1.3")!,
@@ -381,15 +428,26 @@ func renderSnapshots(to dir: String) {
         ("closed", false, .home, limitsUsage, idleTimer), ("open", true, .home, limitsUsage, idleTimer),
         ("shelf", true, .shelf, limitsUsage, idleTimer),
         ("usage-limits", true, .usage, limitsUsage, idleTimer), ("usage-local", true, .usage, localUsage, idleTimer),
+        ("usage-heatmap-real", true, .usage, realHeatUsage, idleTimer),
         ("timer-idle", true, .timer, limitsUsage, idleTimer), ("timer-running", true, .timer, limitsUsage, runningTimer),
         ("timer-finished", true, .timer, limitsUsage, finishedTimer),
         ("closed-timer-running", false, .home, limitsUsage, runningTimer),
         ("closed-timer-paused", false, .home, limitsUsage, pausedTimer),
         ("closed-timer-finished", false, .home, limitsUsage, finishedTimer),
         ("calendar-join", true, .home, limitsUsage, idleTimer),
+        ("calendar-no-access", true, .home, limitsUsage, idleTimer),
+        ("calendar-denied", true, .home, limitsUsage, idleTimer),
+        ("calendar-empty", true, .home, limitsUsage, idleTimer),
         ("closed-meeting-soon", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-now", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-with-timer", false, .home, limitsUsage, runningTimer),     // timer outranks the meeting
+        ("activities-menu-pinned", true, .timer, limitsUsage, runningTimer),
+        ("activities-selected-scores", false, .scores, limitsUsage, runningTimer),
+        ("activities-urgent-meeting", false, .home, limitsUsage, runningTimer),
+        ("audio-devices", true, .audio, limitsUsage, idleTimer),
+        ("audio-empty", true, .audio, limitsUsage, idleTimer),
+        ("audio-connected", false, .home, limitsUsage, idleTimer),
+        ("audio-disconnected", false, .home, limitsUsage, idleTimer),
         ("open-update-badge", true, .home, limitsUsage, idleTimer),
         ("scores-tab", true, .scores, limitsUsage, idleTimer),
         ("scores-nfl", true, .scores, limitsUsage, idleTimer),
@@ -406,18 +464,45 @@ func renderSnapshots(to dir: String) {
         ("closed-unlocking", false, .home, limitsUsage, runningTimer),
     ]
     for (name, open, tab, usage, timer) in variants {
+        let state = NotchState(defaults: nil)
+        state.notchSize = notchSize
         state.isOpen = open
         state.tab = tab
         Updater.shared.applyPreview(available: name == "open-update-badge" ? sampleRelease : nil)
-        let view = NotchRoot(state: state, media: media, battery: battery,
-                             calendar: ["calendar-join": meetingCalendar, "closed-meeting-soon": soonCalendar,
-                                        "closed-meeting-now": nowCalendar, "closed-meeting-with-timer": soonCalendar][name] ?? calendar,
-                             hud: hud,
-                             shelf: shelf, usage: usage, timer: timer,
-                             lock: name == "closed-locked" ? lockedLock : (name == "closed-unlocking" ? unlockingLock : idleLock),
-                             scores: ["scores-tab": scoresList, "scores-nfl": scoresNFL, "closed-nfl-home-ball": scoresNFL,
-                                      "closed-nfl-away-ball": scoresNFLAway, "closed-nfl-flash": scoresNFLFlash, "scores-empty": scoresNone, "closed-score-live": scoresLive,
-                                      "closed-score-flash": scoresFlash, "closed-score-with-meeting": scoresLive][name] ?? scoresNone)
+        let variantCalendar = name == "activities-urgent-meeting"
+            ? CalendarMonitor(preview: [event("Starting soon", startsIn: 0.75)])
+            : (["calendar-join": meetingCalendar, "closed-meeting-soon": soonCalendar,
+                "closed-meeting-now": nowCalendar, "closed-meeting-with-timer": soonCalendar,
+                "calendar-no-access": CalendarMonitor(preview: [], authorized: false),
+                "calendar-denied": CalendarMonitor(preview: [], authorized: false, denied: true),
+                "calendar-empty": CalendarMonitor(preview: [])][name] ?? calendar)
+        let variantLock = name == "closed-locked" ? lockedLock : (name == "closed-unlocking" ? unlockingLock : idleLock)
+        let variantScores = ["scores-tab": scoresList, "scores-nfl": scoresNFL, "closed-nfl-home-ball": scoresNFL,
+                             "closed-nfl-away-ball": scoresNFLAway, "closed-nfl-flash": scoresNFLFlash,
+                             "scores-empty": scoresNone, "closed-score-live": scoresLive,
+                             "closed-score-flash": scoresFlash, "closed-score-with-meeting": scoresLive,
+                             "activities-menu-pinned": scoresLive,
+                             "activities-selected-scores": scoresLive][name] ?? scoresNone
+        let variantAudio: AudioMonitor
+        if name == "audio-empty" {
+            variantAudio = AudioMonitor(preview: [], selected: 0)
+        } else if name == "audio-connected" || name == "audio-disconnected" {
+            variantAudio = AudioMonitor(preview: [headphones, speakers], selected: 2,
+                                        connection: AudioConnection(device: headphones,
+                                                                    kind: name == "audio-connected" ? .connected : .disconnected,
+                                                                    expiresAt: Date().addingTimeInterval(60)))
+        } else { variantAudio = audioPreview }
+        let input = ActivityInputs(media: media, battery: battery, calendar: variantCalendar, hud: hud,
+                                   timer: timer, lock: variantLock, scores: variantScores, audio: variantAudio)
+        var seed = input
+        if name == "activities-urgent-meeting" { seed.meetingID = nil; seed.meetingStart = nil }
+        state.updateActivities(seed)
+        if name == "activities-menu-pinned" || name == "activities-urgent-meeting" { state.toggleActivityPin(.timer) }
+        state.updateActivities(input)
+        if name == "activities-selected-scores" { state.selectActivity(.scores) }
+        let view = NotchRoot(state: state, media: media, battery: battery, calendar: variantCalendar,
+                             hud: hud, shelf: shelf, usage: usage, timer: timer,
+                             lock: variantLock, scores: variantScores, audio: variantAudio)
             .environment(\.colorScheme, .dark)
             .frame(width: width, height: 202)
             .background(Color(white: 0.55))
@@ -454,6 +539,10 @@ func renderSnapshots(to dir: String) {
         Updater.shared.applyPreview(available: release, phase: phase, status: status, lastChecked: last)
         capture(SettingsView(initialTab: .about), size: NSSize(width: 520, height: 530), dark: false, to: dir, name: "settings-\(name)")
     }
+    Updater.shared.applyPreview(
+        available: sampleRelease, lastChecked: checked,
+        blockedReason: "macOS is running Notchly from a temporary read-only copy, because the app is still marked as downloaded. Quit Notchly, run  xattr -dr com.apple.quarantine /Applications/Notchly.app  in Terminal (use the app's real location), and open it again.")
+    capture(SettingsView(initialTab: .about), size: NSSize(width: 520, height: 530), dark: false, to: dir, name: "settings-about-blocked")
     Updater.shared.applyPreview(available: nil)
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct NotchRoot: View {
     @ObservedObject var state: NotchState
@@ -11,34 +12,40 @@ struct NotchRoot: View {
     @ObservedObject var timer: TimerModel
     @ObservedObject var lock: LockMonitor
     @ObservedObject var scores: ScoresMonitor
+    @ObservedObject var audio: AudioMonitor
 
-    private var showHUD: Bool { hud.event != nil }
-    @AppStorage(Pref.showMediaActivity) private var showMedia = true
-    @AppStorage(Pref.showChargingActivity) private var showCharging = true
+    @AppStorage(Pref.closedMusicProgress) private var closedMusicProgress = true
+    @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
 
-    private var showWings: Bool {
-        lock.indicatorVisible || showHUD || timer.isActive || calendar.indicatorMeeting != nil
-            || scores.liveGameForNotch != nil
-            || (showMedia && media.isPlaying) || (showCharging && battery.isCharging)
+    private var showsClosedProgress: Bool {
+        !state.isOpen && closedMusicProgress && state.activity.displayed == .music
+            && media.track.map { $0.duration.isFinite && $0.duration > 0 } == true
+    }
+
+    private var tracksPosition: Bool { state.isOpen || showsClosedProgress }
+
+    private let activityClock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private var activityInputs: ActivityInputs {
+        ActivityInputs(media: media, battery: battery, calendar: calendar, hud: hud,
+                       timer: timer, lock: lock, scores: scores, audio: audio)
     }
 
     private var size: CGSize {
         if state.isOpen { return NotchState.openSize }
-        let wing = NotchState.wingWidth(lock: lock.indicatorVisible, hud: showHUD, timer: timer.isActive,
-                                        meeting: calendar.indicatorMeeting != nil,
-                                        liveScore: scores.liveGameForNotch != nil, activity: showWings)
-        return CGSize(width: state.notchSize.width + wing * 2, height: state.notchSize.height)
+        // The bottom stroke must sit below the physical camera cut-out.
+        return CGSize(width: state.notchSize.width + state.activity.wingWidth * 2,
+                      height: state.notchSize.height + (showsClosedProgress ? 2 : 0))
     }
 
     var body: some View {
         ZStack(alignment: .top) {
             // Each layer gets an explicit size so neither can stretch the other's layout.
             ClosedContent(state: state, media: media, battery: battery, hud: hud, timer: timer, lock: lock,
-                          calendar: calendar, scores: scores)
+                          calendar: calendar, scores: scores, audio: audio)
                 .frame(width: size.width, height: state.notchSize.height)
                 .opacity(state.isOpen ? 0 : 1)
 
-            OpenContent(state: state, media: media, battery: battery, calendar: calendar, shelf: shelf, usage: usage, timer: timer, scores: scores)
+            OpenContent(state: state, media: media, battery: battery, calendar: calendar, shelf: shelf, usage: usage, timer: timer, scores: scores, audio: audio)
                 .frame(width: NotchState.openSize.width, height: NotchState.openSize.height, alignment: .top)
                 .opacity(state.isOpen ? 1 : 0)
                 .blur(radius: state.isOpen ? 0 : 8)
@@ -46,15 +53,53 @@ struct NotchRoot: View {
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .background(Color.black)
+        .overlay {
+            if showsClosedProgress, let track = media.track {
+                ClosedMusicProgress(position: media.position, duration: track.duration,
+                                    playing: media.isPlaying, tint: media.tint(artworkColors: tintFromArtwork))
+                    .id(track.key)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .clipShape(NotchShape(topRadius: state.isOpen ? 19 : 6, bottomRadius: state.isOpen ? 26 : 12))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.isOpen)
-        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: showWings)
-        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: showHUD)
-        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: timer.isActive)
-        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: lock.indicatorVisible)
+        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.activity.displayed)
+        .onAppear {
+            state.updateActivities(activityInputs)
+            media.setPositionTracking(tracksPosition)
+        }
+        .onChange(of: tracksPosition) { _, tracking in media.setPositionTracking(tracking) }
+        .onDisappear { media.setPositionTracking(false) }
+        .onChange(of: activityInputs) { _, input in state.updateActivities(input) }
+        .onReceive(activityClock) { now in state.updateActivities(activityInputs, at: now) }
         .preferredColorScheme(.dark)
+    }
+}
+
+/// A continuous, open outline: top-left → bottom-left → bottom-right → top-right.
+struct ClosedMusicProgress: View {
+    let position: Double
+    let duration: Double
+    let playing: Bool
+    let tint: Color
+
+    private var fraction: Double {
+        guard duration.isFinite, duration > 0, position.isFinite else { return 0 }
+        return min(max(position / duration, 0), 1)
+    }
+
+    var body: some View {
+        let outline = NotchShape(topRadius: 6, bottomRadius: 11, closesTop: false)
+        ZStack {
+            outline.stroke(.white.opacity(0.15), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            outline.trim(from: 0, to: fraction)
+                .stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .animation(playing ? .linear(duration: 1) : nil, value: fraction)
+        }
+        .padding(1)
     }
 }
 
@@ -69,18 +114,12 @@ struct ClosedContent: View {
     @ObservedObject var lock: LockMonitor
     @ObservedObject var calendar: CalendarMonitor
     @ObservedObject var scores: ScoresMonitor
+    @ObservedObject var audio: AudioMonitor
 
-    @AppStorage(Pref.showMediaActivity) private var showMedia = true
-    @AppStorage(Pref.showChargingActivity) private var showCharging = true
     @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
 
-    private var playing: Bool { showMedia && media.isPlaying }
-    private var charging: Bool { showCharging && battery.isCharging }
-    private var wingWidth: CGFloat {
-        NotchState.wingWidth(lock: lock.indicatorVisible, hud: hud.event != nil, timer: timer.isActive,
-                             meeting: calendar.indicatorMeeting != nil,
-                             liveScore: scores.liveGameForNotch != nil, activity: true)
-    }
+    private var wingWidth: CGFloat { state.activity.wingWidth }
+    private var displayed: NotchActivity? { state.activity.displayed }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -90,55 +129,59 @@ struct ClosedContent: View {
         }
         .padding(.horizontal, 6)
         .frame(height: state.notchSize.height)
-        .opacity(lock.indicatorVisible || hud.event != nil || timer.isActive || calendar.indicatorMeeting != nil
-                 || scores.liveGameForNotch != nil
-                 || playing || charging ? 1 : 0)
+        .opacity(displayed == nil ? 0 : 1)
     }
 
     // While locked (or just unlocked) the lock icon replaces everything else; nothing private is shown.
     @ViewBuilder private var leading: some View {
-        if lock.indicatorVisible {
+        if displayed == .lock {
             LockIcon(phase: lock.phase)
-        } else if let e = hud.event {
+        } else if displayed == .hud, let e = hud.event {
             Image(systemName: e.symbol)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .contentTransition(.symbolEffect(.replace))
-        } else if timer.phase == .finished {
+        } else if displayed == .timer, timer.phase == .finished {
             Image(systemName: "bell.fill")
                 .font(.system(size: 13))
                 .foregroundStyle(.orange)
                 .symbolEffect(.pulse)
-        } else if timer.isActive {
+        } else if displayed == .timer {
             TimerRing(timer: timer)
-        } else if let meeting = calendar.indicatorMeeting {
+        } else if displayed == .meeting, let meeting = calendar.indicatorMeeting {
             MeetingIcon(started: meeting.start <= Date())
-        } else if let game = scores.liveGameForNotch {
+        } else if displayed == .scores, let game = scores.liveGameForNotch {
             ScoreWing(game: game, leading: true, flash: scores.flashes[game.id])
-        } else if playing {
+        } else if displayed == .music {
             ArtworkView(image: media.artwork, size: 22, radius: 5)
-        } else if charging {
+        } else if displayed == .charging {
             Image(systemName: "bolt.fill").foregroundStyle(.green).font(.system(size: 12))
+        } else if displayed == .audioConnection, let event = audio.visibleConnection() {
+            Image(systemName: event.device.symbol)
+                .font(.system(size: 18))
+                .foregroundStyle(event.kind == .disconnected ? .white.opacity(0.5) : .green)
         }
     }
 
     @ViewBuilder private var trailing: some View {
-        if lock.indicatorVisible {
+        if displayed == .lock {
             Color.clear
-        } else if let e = hud.event {
+        } else if displayed == .hud, let e = hud.event {
             LevelBar(level: CGFloat(e.level)).frame(width: 46, height: 5)
-        } else if timer.phase == .finished {
+        } else if displayed == .timer, timer.phase == .finished {
             Text("Done").font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
-        } else if timer.isActive {
+        } else if displayed == .timer {
             TimerReadout(timer: timer)
-        } else if let meeting = calendar.indicatorMeeting {
+        } else if displayed == .meeting, let meeting = calendar.indicatorMeeting {
             MeetingCountdown(start: meeting.start)
-        } else if let game = scores.liveGameForNotch {
+        } else if displayed == .scores, let game = scores.liveGameForNotch {
             ScoreWing(game: game, leading: false, flash: scores.flashes[game.id])
-        } else if playing {
+        } else if displayed == .music {
             EqualizerBars(tint: media.tint(artworkColors: tintFromArtwork))
-        } else if charging {
+        } else if displayed == .charging {
             Text("\(battery.level)%").font(.system(size: 11, weight: .semibold)).foregroundStyle(.green)
+        } else if displayed == .audioConnection, let event = audio.visibleConnection() {
+            AudioConnectionReadout(connection: event)
         }
     }
 }
@@ -220,25 +263,12 @@ struct OpenContent: View {
     @ObservedObject var usage: UsageMonitor
     @ObservedObject var timer: TimerModel
     @ObservedObject var scores: ScoresMonitor
+    @ObservedObject var audio: AudioMonitor
 
     var body: some View {
         VStack(spacing: 0) {
             // Header sits beside the camera cut-out.
-            HStack {
-                HStack(spacing: 8) {
-                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                        Text(ctx.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    SettingsButton()
-                }
-                Spacer(minLength: state.notchSize.width)
-                HStack(spacing: 8) {
-                    TabSwitcher(state: state, shelf: shelf, usage: usage)
-                    if battery.hasBattery { BatteryPill(battery: battery).fixedSize() }
-                }
-            }
+            header
             .padding(.horizontal, 29)
             .frame(height: state.notchSize.height)
 
@@ -249,6 +279,7 @@ struct OpenContent: View {
                 case .timer: TimerView(timer: timer)
                 case .scores: ScoresView(scores: scores)
                 case .usage: UsageView(usage: usage)
+                case .audio: AudioView(audio: audio)
                 }
             }
             .padding(.horizontal, 29)
@@ -256,6 +287,36 @@ struct OpenContent: View {
             .padding(.bottom, 20)
             .animation(.easeOut(duration: 0.18), value: state.tab)
         }
+    }
+
+    private var header: some View {
+            HStack {
+                HStack(spacing: 5) {
+                    if !state.activity.available.isEmpty || state.activity.pinned != nil {
+                        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                            Text(ctx.date, format: .dateTime.hour().minute())
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .help(ctx.date.formatted(date: .complete, time: .shortened))
+                                .fixedSize()
+                        }
+                        ActivityControls(state: state)
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                            Text(ctx.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .fixedSize()
+                        }
+                    }
+                    SettingsButton()
+                }
+                Spacer(minLength: state.notchSize.width)
+                HStack(spacing: 8) {
+                    TabSwitcher(state: state, shelf: shelf, usage: usage)
+                    if battery.hasBattery { BatteryPill(battery: battery, compact: true).fixedSize() }
+                }
+            }
     }
 
     @AppStorage(Pref.showCalendar) private var showCalendar = true
@@ -307,6 +368,7 @@ struct SettingsButton: View {
 
 struct BatteryPill: View {
     @ObservedObject var battery: BatteryMonitor
+    var compact = false
 
     private var symbol: String {
         if battery.isCharging { return "battery.100.bolt" }
@@ -321,12 +383,15 @@ struct BatteryPill: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("\(battery.level)%").font(.system(size: 12, weight: .semibold))
+            if !compact { Text("\(battery.level)%").font(.system(size: 12, weight: .semibold)) }
             Image(systemName: symbol)
+                .font(.system(size: 12))
+                .frame(width: 24, height: 16)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(battery.isCharging ? .green : (battery.level <= 20 ? .red : .white))
         }
         .foregroundStyle(.white.opacity(0.85))
+        .help("Mac battery: \(battery.level)%\(battery.isCharging ? " · charging" : "")")
     }
 }
 
@@ -543,18 +608,35 @@ struct CalendarView: View {
                 .textCase(.uppercase)
 
             if !calendar.authorized {
-                Button(calendar.denied ? "Enable in System Settings" : "Allow calendar access") {
-                    if calendar.denied {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
-                    } else {
-                        calendar.requestAccess()
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(calendar.denied
+                         ? "Calendar access is turned off for Notchly. Turn it on in System Settings to see your next meetings here."
+                         : "See your next meetings here, with a Join button for video calls.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        if calendar.denied {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                        } else {
+                            calendar.requestAccess()
+                        }
+                    } label: {
+                        Text(calendar.denied ? "Open System Settings" : "Allow Calendar Access")
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 22)
+                            .foregroundStyle(.white.opacity(0.95))
+                            .background(Capsule().fill(.white.opacity(0.16)))
+                            .contentShape(Capsule())
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(.blue)
             } else if calendar.events.isEmpty {
-                Text("No upcoming events").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("No upcoming events").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                    Text("Nothing in the next 48 hours.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
+                }
             } else {
                 ForEach(calendar.events.prefix(2)) { event in
                     HStack(alignment: .center, spacing: 8) {

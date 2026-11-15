@@ -15,11 +15,14 @@ enum Pref {
     static let haptics = "haptics"
     static let soundLockUnlock = "soundLockUnlock"
     static let soundOpenClose = "soundOpenClose"
+    static let closedMusicProgress = "closedMusicProgress"
     static let tintFromArtwork = "tintFromArtwork"
     static let lockIndicator = "lockIndicator"
     static let lockScreenVisible = "lockScreenVisible"         // applied at launch
     static let showMediaActivity = "showMediaActivity"
     static let showChargingActivity = "showChargingActivity"
+    static let pinnedActivity = "pinnedActivity"
+    static let showAudioActivity = "showAudioActivity"
 
     // Home tab
     static let enableSpotify = "enableSpotify"
@@ -52,10 +55,13 @@ enum Pref {
             soundLockUnlock: true,
             soundOpenClose: false,
             tintFromArtwork: true,
+            closedMusicProgress: true,
             lockIndicator: true,
             lockScreenVisible: true,
             showMediaActivity: true,
             showChargingActivity: true,
+            pinnedActivity: "",
+            showAudioActivity: true,
             enableSpotify: true,
             enableMusic: true,
             showCalendar: true,

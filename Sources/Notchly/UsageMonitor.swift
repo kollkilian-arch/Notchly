@@ -35,16 +35,21 @@ enum UsageState: Equatable {
 /// back to counting tokens in `~/.claude/projects`.
 final class UsageMonitor: ObservableObject {
     @Published private(set) var state: UsageState = .idle
+    /// Hour-by-hour Claude Code activity over the last seven days (nil until first loaded).
+    @Published private(set) var heatmap: UsageHeatmap?
 
     private var lastFetch: Date?
     private var inFlight = false
+    private var heatmapFetched: Date?
+    private var heatmapInFlight = false
     private let isPreview: Bool
 
     init() { isPreview = false }
 
     /// For the debug snapshot tool: shows a fixed state and never touches the network or Keychain.
-    init(preview: UsageState) {
+    init(preview: UsageState, heatmap: UsageHeatmap? = nil) {
         state = preview
+        self.heatmap = heatmap
         isPreview = true
     }
 
@@ -67,6 +72,24 @@ final class UsageMonitor: ObservableObject {
                 self?.inFlight = false
                 self?.lastFetch = Date()
                 self?.state = result
+            }
+        }
+    }
+
+    /// Rebuilds the heatmap from the local logs, off the main thread. Only worth doing while the Usage
+    /// tab is showing; at most once per `minInterval` unless forced.
+    func refreshHeatmap(force: Bool = false, minInterval: TimeInterval = 300) {
+        guard !isPreview, !heatmapInFlight else { return }
+        if !force, let last = heatmapFetched, Date().timeIntervalSince(last) < minInterval { return }
+        heatmapInFlight = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let now = Date()
+            let start = UsageHeatmap.windowStart(now: now)
+            let map = UsageHeatmap.build(events: Self.readLocalEvents(since: start), start: start, now: now)
+            DispatchQueue.main.async {
+                self?.heatmapInFlight = false
+                self?.heatmapFetched = Date()
+                self?.heatmap = map
             }
         }
     }
@@ -187,54 +210,88 @@ final class UsageMonitor: ObservableObject {
 
     // MARK: Local fallback
 
-    /// Sums input + output + cache-creation tokens from Claude Code's session logs.
+    /// Every assistant message since `since`, with input + output + cache-creation tokens.
     /// (Cache reads are excluded: they would hugely inflate the number.)
-    static func scanLocalLogs() -> LocalUsage {
+    static func readLocalEvents(since: Date) -> [UsageEvent] {
         let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
         guard let files = FileManager.default.enumerator(
             at: root, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]
-        ) else { return LocalUsage(last5h: 0, last7d: 0) }
+        ) else { return [] }
 
-        let now = Date()
-        let from5h = now.addingTimeInterval(-5 * 3600), from7d = now.addingTimeInterval(-7 * 86400)
         var seen = Set<String>()
-        var t5 = 0, t7 = 0
+        var events: [UsageEvent] = []
+        let needle = Array("\"usage\"".utf8)
+
+        /// One log line that mentions usage: keep it if it is a message with a timestamp after `since`.
+        func consume(_ line: Data) {
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  let message = obj["message"] as? [String: Any],
+                  let usage = message["usage"] as? [String: Any],
+                  let stamp = obj["timestamp"] as? String,
+                  let date = parseDate(stamp), date > since else { return }
+
+            // A message is logged once per content block with identical usage; count it once.
+            let key = "\(message["id"] as? String ?? "")|\(obj["requestId"] as? String ?? "")"
+            if key != "|", !seen.insert(key).inserted { return }
+
+            func n(_ k: String) -> Int { (usage[k] as? NSNumber)?.intValue ?? 0 }
+            events.append(UsageEvent(date: date,
+                                     tokens: n("input_tokens") + n("output_tokens") + n("cache_creation_input_tokens")))
+        }
 
         for case let url as URL in files where url.pathExtension == "jsonl" {
             guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                  modified > from7d,
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                  modified > since,
+                  let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { continue }
 
-            text.enumerateLines { line, _ in
-                guard line.contains("\"usage\""),
-                      let data = line.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let message = obj["message"] as? [String: Any],
-                      let usage = message["usage"] as? [String: Any],
-                      let stamp = obj["timestamp"] as? String,
-                      let date = parseDate(stamp), date > from7d else { return }
-
-                // A message is logged once per content block with identical usage; count it once.
-                let key = "\(message["id"] as? String ?? "")|\(obj["requestId"] as? String ?? "")"
-                if key != "|", !seen.insert(key).inserted { return }
-
-                func n(_ k: String) -> Int { (usage[k] as? NSNumber)?.intValue ?? 0 }
-                let tokens = n("input_tokens") + n("output_tokens") + n("cache_creation_input_tokens")
-                t7 += tokens
-                if date > from5h { t5 += tokens }
+            // Logs run to tens of megabytes, almost all of it tool output. Walk the raw bytes and only
+            // decode the few lines that mention usage (a String per file and line would take seconds).
+            data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+                guard let base = raw.baseAddress else { return }
+                var lineStart = 0
+                while lineStart < raw.count {
+                    let lineEnd = memchr(base + lineStart, 0x0A, raw.count - lineStart)
+                        .map { base.distance(to: UnsafeRawPointer($0)) } ?? raw.count
+                    let length = lineEnd - lineStart
+                    if length > needle.count, memmem(base + lineStart, length, needle, needle.count) != nil {
+                        consume(Data(bytes: base + lineStart, count: length))
+                    }
+                    lineStart = lineEnd + 1
+                }
             }
+        }
+        return events
+    }
+
+    /// Token totals for the last 5 hours and 7 days.
+    static func scanLocalLogs() -> LocalUsage {
+        let now = Date()
+        return totals(of: readLocalEvents(since: now.addingTimeInterval(-7 * 86400)), now: now)
+    }
+
+    static func totals(of events: [UsageEvent], now: Date) -> LocalUsage {
+        let from5h = now.addingTimeInterval(-5 * 3600), from7d = now.addingTimeInterval(-7 * 86400)
+        var t5 = 0, t7 = 0
+        for event in events where event.date > from7d {
+            t7 += event.tokens
+            if event.date > from5h { t5 += event.tokens }
         }
         return LocalUsage(last5h: t5, last7d: t7)
     }
 
+    // Creating a formatter is expensive; one log read parses hundreds of timestamps.
+    private static let isoWithFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+
     private static func parseDate(_ s: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = withFraction.date(from: s) { return d }
-        let plain = ISO8601DateFormatter()
-        if let d = plain.date(from: s) { return d }
+        if let d = isoWithFraction.date(from: s) { return d }
+        if let d = isoPlain.date(from: s) { return d }
         // e.g. 6-digit fractions: drop the fraction and retry
         let stripped = s.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression)
-        return plain.date(from: stripped)
+        return isoPlain.date(from: stripped)
     }
 }
