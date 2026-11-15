@@ -20,6 +20,8 @@ A native SwiftUI/AppKit app, in the spirit of Alcove and Dynamic Island apps.
 **While the notch is closed**
 
 Shows a timer, meeting reminder, live score, music (artwork + equalizer), or charging status.
+While music is shown, a thin album-coloured progress line follows the left, bottom, and right edges.
+Switch it off under **Settings → Home → Show song progress around the closed notch**.
 Choose and pin an activity, cycle between active ones, or let automatic priorities decide.
 The lock padlock and volume/brightness HUD take priority; important timer and meeting alerts briefly
 interrupt your chosen activity.

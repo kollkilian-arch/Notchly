@@ -426,6 +426,7 @@ private struct HomeSettings: View {
     @AppStorage(Pref.enableSpotify) private var spotify = true
     @AppStorage(Pref.enableMusic) private var music = true
     @AppStorage(Pref.tintFromArtwork) private var tint = true
+    @AppStorage(Pref.closedMusicProgress) private var closedProgress = true
     @AppStorage(Pref.showCalendar) private var calendar = true
     @AppStorage(Pref.showJoinButton) private var joinButton = true
     @AppStorage(Pref.meetingIndicator) private var meetingIndicator = true
@@ -437,6 +438,7 @@ private struct HomeSettings: View {
                 Toggle("Spotify", isOn: $spotify)
                 Toggle("Apple Music", isOn: $music)
                 Toggle("Tint the progress bar and equalizer with the album colours", isOn: $tint)
+                Toggle("Show song progress around the closed notch", isOn: $closedProgress)
             } header: {
                 Text("Now Playing sources")
             } footer: {

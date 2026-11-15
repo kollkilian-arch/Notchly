@@ -6,6 +6,21 @@ import CoreAudio
 @MainActor
 func renderSnapshots(to dir: String) {
     let notchSize = NotchGeometry.find().size
+    // Deterministic outline previews, including the ends of the song; no player needed.
+    for (name, fraction) in [("start", 0.0), ("middle", 0.5), ("end", 1.0)] {
+        let height = notchSize.height + 2
+        let preview = Color.black
+            .overlay {
+                ClosedMusicProgress(position: fraction * 200, duration: 200,
+                                    playing: false, tint: .cyan)
+            }
+            .clipShape(NotchShape(topRadius: 6, bottomRadius: 12))
+            .frame(width: notchSize.width + 100, height: height)
+            .frame(width: 440, height: 80, alignment: .top)
+            .background(Color(white: 0.55))
+        capture(preview, size: NSSize(width: 440, height: 80), dark: true,
+                to: dir, name: "closed-music-progress-\(name)")
+    }
     let media = MediaMonitor()
     let battery = BatteryMonitor()
     let calendar = CalendarMonitor()

@@ -14,6 +14,16 @@ struct NotchRoot: View {
     @ObservedObject var scores: ScoresMonitor
     @ObservedObject var audio: AudioMonitor
 
+    @AppStorage(Pref.closedMusicProgress) private var closedMusicProgress = true
+    @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
+
+    private var showsClosedProgress: Bool {
+        !state.isOpen && closedMusicProgress && state.activity.displayed == .music
+            && media.track.map { $0.duration.isFinite && $0.duration > 0 } == true
+    }
+
+    private var tracksPosition: Bool { state.isOpen || showsClosedProgress }
+
     private let activityClock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private var activityInputs: ActivityInputs {
         ActivityInputs(media: media, battery: battery, calendar: calendar, hud: hud,
@@ -22,7 +32,9 @@ struct NotchRoot: View {
 
     private var size: CGSize {
         if state.isOpen { return NotchState.openSize }
-        return CGSize(width: state.notchSize.width + state.activity.wingWidth * 2, height: state.notchSize.height)
+        // The bottom stroke must sit below the physical camera cut-out.
+        return CGSize(width: state.notchSize.width + state.activity.wingWidth * 2,
+                      height: state.notchSize.height + (showsClosedProgress ? 2 : 0))
     }
 
     var body: some View {
@@ -41,15 +53,53 @@ struct NotchRoot: View {
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .background(Color.black)
+        .overlay {
+            if showsClosedProgress, let track = media.track {
+                ClosedMusicProgress(position: media.position, duration: track.duration,
+                                    playing: media.isPlaying, tint: media.tint(artworkColors: tintFromArtwork))
+                    .id(track.key)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .clipShape(NotchShape(topRadius: state.isOpen ? 19 : 6, bottomRadius: state.isOpen ? 26 : 12))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.isOpen)
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.activity.displayed)
-        .onAppear { state.updateActivities(activityInputs) }
+        .onAppear {
+            state.updateActivities(activityInputs)
+            media.setPositionTracking(tracksPosition)
+        }
+        .onChange(of: tracksPosition) { _, tracking in media.setPositionTracking(tracking) }
+        .onDisappear { media.setPositionTracking(false) }
         .onChange(of: activityInputs) { _, input in state.updateActivities(input) }
         .onReceive(activityClock) { now in state.updateActivities(activityInputs, at: now) }
         .preferredColorScheme(.dark)
+    }
+}
+
+/// A continuous, open outline: top-left → bottom-left → bottom-right → top-right.
+struct ClosedMusicProgress: View {
+    let position: Double
+    let duration: Double
+    let playing: Bool
+    let tint: Color
+
+    private var fraction: Double {
+        guard duration.isFinite, duration > 0, position.isFinite else { return 0 }
+        return min(max(position / duration, 0), 1)
+    }
+
+    var body: some View {
+        let outline = NotchShape(topRadius: 6, bottomRadius: 11, closesTop: false)
+        ZStack {
+            outline.stroke(.white.opacity(0.15), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            outline.trim(from: 0, to: fraction)
+                .stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .animation(playing ? .linear(duration: 1) : nil, value: fraction)
+        }
+        .padding(1)
     }
 }
 

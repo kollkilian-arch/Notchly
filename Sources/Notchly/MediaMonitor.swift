@@ -34,8 +34,8 @@ struct PositionClock: Equatable {
 /// Follows Spotify and Apple Music through AppleScript, but only asks when something happened:
 /// both apps broadcast a distributed notification on every play, pause and track change, and
 /// launching or quitting them is observed through NSWorkspace. A slow fallback poll covers a missed
-/// notification. While the notch is open, the progress bar advances locally and is re-synced every
-/// few seconds, so nothing polls while it is closed.
+/// notification. While a progress bar is visible, it advances locally and is re-synced every
+/// few seconds. Hidden progress bars do not need a position timer.
 /// (The private MediaRemote framework is locked down for third-party apps on current macOS.)
 final class MediaMonitor: NSObject, ObservableObject {
     @Published private(set) var track: Track?
@@ -51,7 +51,7 @@ final class MediaMonitor: NSObject, ObservableObject {
         "com.apple.Music.playerInfo", "com.apple.iTunes.playerInfo", "com.spotify.client.PlaybackStateChanged",
     ]
     private static let playerBundleIDs: Set<String> = ["com.spotify.client", "com.apple.Music"]
-    /// While the notch is open, ask the player for the real position every this many seconds.
+    /// While a progress bar is visible, ask the player for the real position every this many seconds.
     private static let resyncTicks = 10
 
     private let queue = DispatchQueue(label: "notchly.media")
@@ -146,7 +146,7 @@ final class MediaMonitor: NSObject, ObservableObject {
 
     // MARK: Progress bar
 
-    /// Call with `true` while the progress bar is visible (the notch is open). It then advances
+    /// Call with `true` while an expanded or closed-notch progress bar is visible. It then advances
     /// locally every second and is re-read from the player every few seconds; when `false`,
     /// nothing runs.
     func setPositionTracking(_ on: Bool) {
