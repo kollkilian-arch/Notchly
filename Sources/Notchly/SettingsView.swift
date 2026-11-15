@@ -3,17 +3,23 @@ import Combine
 import ServiceManagement
 import EventKit
 
-enum SettingsTab: Hashable { case general, notch, home, hud, feedback, scores }
+enum SettingsTab: Hashable { case general, notch, home, hud, feedback, scores, about }
+
+/// Which settings tab is showing, so other parts of the app can open the window on a specific tab.
+final class SettingsNavigator: ObservableObject {
+    static let shared = SettingsNavigator()
+    @Published var tab: SettingsTab = .general
+}
 
 struct SettingsView: View {
-    @State private var tab: SettingsTab
+    @ObservedObject private var navigator = SettingsNavigator.shared
 
     init(initialTab: SettingsTab = .general) {
-        _tab = State(initialValue: initialTab)
+        SettingsNavigator.shared.tab = initialTab
     }
 
     var body: some View {
-        TabView(selection: $tab) {
+        TabView(selection: $navigator.tab) {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
@@ -32,6 +38,9 @@ struct SettingsView: View {
             ScoresSettings()
                 .tabItem { Label("Scores", systemImage: "sportscourt") }
                 .tag(SettingsTab.scores)
+            AboutSettings()
+                .tabItem { Label("About", systemImage: "info.circle") }
+                .tag(SettingsTab.about)
         }
         .frame(width: 520, height: 530)
     }
@@ -96,10 +105,6 @@ private struct GeneralSettings: View {
     @State private var calendar = EKEventStore.authorizationStatus(for: .event)
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
-    private var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
-    }
-
     var body: some View {
         Form {
             Section {
@@ -120,11 +125,6 @@ private struct GeneralSettings: View {
                               detail: "Lets Notchly read and control Music and Spotify.",
                               granted: nil, pane: "Privacy_Automation")
             }
-
-            Section {
-                LabeledContent("Version", value: version)
-                Button("Quit Notchly", role: .destructive) { NSApp.terminate(nil) }
-            }
         }
         .formStyle(.grouped)
         .onReceive(timer) { _ in
@@ -140,6 +140,105 @@ private struct GeneralSettings: View {
             NSLog("Launch at login failed: \(error)")
         }
         launchAtLogin = SMAppService.mainApp.status == .enabled
+    }
+}
+
+// MARK: - About & updates
+
+private struct AboutSettings: View {
+    @ObservedObject private var updater = Updater.shared
+    @AppStorage(Pref.autoCheckUpdates) private var autoCheck = true
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Notchly", value: "Version \(Updater.currentVersion)")
+            }
+
+            Section {
+                Toggle("Check for updates automatically", isOn: $autoCheck)
+
+                LabeledContent {
+                    Button(updater.phase == .checking ? "Checking…" : "Check for Updates") {
+                        updater.checkForUpdates(userInitiated: true)
+                    }
+                    .disabled(updater.phase != .idle)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(statusTitle)
+                        if let detail = statusDetail {
+                            Text(detail).font(.caption).foregroundStyle(statusIsError ? Color.red : Color.secondary)
+                        }
+                    }
+                }
+
+                if let release = updater.available { availableBlock(release) }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Notchly looks at the project's GitHub releases. An update is only installed if it is signed by the same developer as this version.")
+            }
+
+            Section {
+                Button("Quit Notchly", role: .destructive) { NSApp.terminate(nil) }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: Status text
+
+    private var statusTitle: String {
+        if updater.phase == .checking { return "Checking for updates…" }
+        if let release = updater.available { return "Version \(release.version) is available" }
+        switch updater.status {
+        case .upToDate: return "Notchly is up to date"
+        case .failed: return "Couldn't check for updates"
+        case .none: return updater.lastChecked == nil ? "Not checked yet" : "Last checked"
+        }
+    }
+
+    private var statusDetail: String? {
+        if case .failed(let message) = updater.status, updater.available == nil { return message }
+        guard let last = updater.lastChecked else { return nil }
+        return "Last checked \(last.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    private var statusIsError: Bool {
+        if case .failed = updater.status, updater.available == nil { return true }
+        return false
+    }
+
+    // MARK: Install
+
+    @ViewBuilder private func availableBlock(_ release: AppRelease) -> some View {
+        switch updater.phase {
+        case .downloading(let fraction):
+            VStack(alignment: .leading, spacing: 4) {
+                ProgressView(value: fraction)
+                Text("Downloading… \(Int(fraction * 100))%").font(.caption).foregroundStyle(.secondary)
+            }
+        case .installing:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Installing, Notchly will restart…").font(.caption).foregroundStyle(.secondary)
+            }
+        default:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Button("Install and Restart") { updater.installAvailableUpdate() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(release.zip == nil || !updater.canInstallInPlace)
+                    Button("Release Notes") { NSWorkspace.shared.open(release.pageURL) }
+                }
+                if case .failed(let message) = updater.status {
+                    Text(message).font(.caption).foregroundStyle(.red)
+                } else if !updater.canInstallInPlace {
+                    Text("Notchly can't replace itself where it is now. Use Release Notes to download the update and replace the app yourself.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 
@@ -405,7 +504,9 @@ final class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    func show() {
+    /// Opens the settings window, optionally on a specific tab.
+    func show(tab: SettingsTab? = nil) {
+        defer { if let tab { SettingsNavigator.shared.tab = tab } }   // after the window exists (creating the view resets it)
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
             w.title = "Notchly Settings"

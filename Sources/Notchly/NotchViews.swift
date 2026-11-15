@@ -276,23 +276,32 @@ struct OpenContent: View {
 /// Opens the Notchly settings window straight from the notch.
 struct SettingsButton: View {
     @State private var hovering = false
+    @ObservedObject private var updater = Updater.shared
+
+    private var updateAvailable: Bool { updater.available != nil }
 
     var body: some View {
         Button {
             Feedback.haptic(.light)
-            SettingsWindowController.shared.show()
+            // With an update waiting, go straight to where it can be installed.
+            SettingsWindowController.shared.show(tab: updateAvailable ? .about : nil)
         } label: {
             Image(systemName: "gearshape.fill")
                 .font(.system(size: 11))
                 .frame(width: 22, height: 20)
-                .foregroundStyle(.white.opacity(hovering ? 0.95 : 0.5))
+                .foregroundStyle(.white.opacity(hovering || updateAvailable ? 0.95 : 0.5))
                 .background(Circle().fill(.white.opacity(hovering ? 0.14 : 0)))
+                .overlay(alignment: .topTrailing) {
+                    if updateAvailable {
+                        Circle().fill(Color.orange).frame(width: 6, height: 6).offset(x: -1, y: 2)
+                    }
+                }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help("Notchly Settings")
+        .help(updateAvailable ? "Update available: Notchly \(updater.available?.version ?? "")" : "Notchly Settings")
     }
 }
 

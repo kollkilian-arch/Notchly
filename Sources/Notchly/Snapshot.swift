@@ -92,6 +92,37 @@ func renderSnapshots(to dir: String) {
                  color: .systemOrange, meeting: MeetingLink(url: URL(string: "https://meet.google.com/abc-defg-hij")!, service: "Google Meet")),
     ])
 
+    // Update checker: version comparison and release parsing.
+    var updateFails: [String] = []
+    var updateChecks = 0
+    func updateCheck(_ name: String, _ ok: Bool) {
+        updateChecks += 1
+        if !ok { updateFails.append(name) }
+    }
+    let versionCases: [(String, String, Bool)] = [
+        ("0.1.3", "0.1.2", true), ("0.1.2", "0.1.2", false), ("0.1.1", "0.1.2", false),
+        ("0.1.10", "0.1.9", true), ("0.2", "0.1.99", true), ("1.0.0", "0.9.9", true),
+        ("0.1.2.1", "0.1.2", true), ("garbage", "0.1.2", false), ("", "0.1.2", false), ("0.1.3-beta", "0.1.2", true),
+    ]
+    for (remote, local, expected) in versionCases {
+        updateCheck("isNewer(\(remote), \(local))", Updater.isNewer(remote, than: local) == expected)
+    }
+    let base = "https://github.com/kollkilian-arch/Notchly/releases/download/v0.1.3"
+    let releaseJSON = #"{"tag_name":"v0.1.3","html_url":"https://github.com/kollkilian-arch/Notchly/releases/tag/v0.1.3","draft":false,"prerelease":false,"body":"x","assets":[{"name":"Notchly-0.1.3.zip.sha256","size":98,"browser_download_url":"\#(base)/Notchly-0.1.3.zip.sha256"},{"name":"Notchly-0.1.3.zip","size":578000,"browser_download_url":"\#(base)/Notchly-0.1.3.zip"}]}"#
+    let parsedRelease = try? Updater.parseRelease(Data(releaseJSON.utf8))
+    updateCheck("release: version without the leading v", parsedRelease?.version == "0.1.3" && parsedRelease?.tag == "v0.1.3")
+    updateCheck("release: zip and checksum assets told apart", parsedRelease?.zip?.name == "Notchly-0.1.3.zip" && parsedRelease?.sha256?.name == "Notchly-0.1.3.zip.sha256")
+    updateCheck("release: page URL", parsedRelease?.pageURL.absoluteString.hasSuffix("/tag/v0.1.3") == true)
+    updateCheck("release: prerelease is ignored", (try? Updater.parseRelease(Data(#"{"tag_name":"v9","html_url":"https://x.y","prerelease":true}"#.utf8))) == nil)
+    updateCheck("release: draft is ignored", (try? Updater.parseRelease(Data(#"{"tag_name":"v9","html_url":"https://x.y","draft":true}"#.utf8))) == nil)
+    updateCheck("release: garbage is rejected", (try? Updater.parseRelease(Data("not json".utf8))) == nil)
+    updateCheck("release: no assets means nothing to install", (try? Updater.parseRelease(Data(#"{"tag_name":"v0.1.3","html_url":"https://x.y"}"#.utf8)))?.zip == nil)
+    print("updates: \(updateChecks - updateFails.count)/\(updateChecks) checks pass" + (updateFails.isEmpty ? "" : " — FAILED: \(updateFails)"))
+    let sampleRelease = AppRelease(
+        version: "0.1.3", tag: "v0.1.3", pageURL: URL(string: "https://github.com/kollkilian-arch/Notchly/releases/tag/v0.1.3")!,
+        zip: AppRelease.Asset(name: "Notchly-0.1.3.zip", url: URL(string: "\(base)/Notchly-0.1.3.zip")!, size: 578_000),
+        sha256: AppRelease.Asset(name: "Notchly-0.1.3.zip.sha256", url: URL(string: "\(base)/Notchly-0.1.3.zip.sha256")!, size: 98))
+
     // Scores: parser tests against samples shaped like the real ESPN responses, then selection logic.
     let scoreboardJSON = #"""
     {"events":[
@@ -345,6 +376,7 @@ func renderSnapshots(to dir: String) {
         ("closed-meeting-soon", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-now", false, .home, limitsUsage, idleTimer),
         ("closed-meeting-with-timer", false, .home, limitsUsage, runningTimer),     // timer outranks the meeting
+        ("open-update-badge", true, .home, limitsUsage, idleTimer),
         ("scores-tab", true, .scores, limitsUsage, idleTimer),
         ("scores-nfl", true, .scores, limitsUsage, idleTimer),
         ("closed-nfl-home-ball", false, .home, limitsUsage, idleTimer),
@@ -362,6 +394,7 @@ func renderSnapshots(to dir: String) {
     for (name, open, tab, usage, timer) in variants {
         state.isOpen = open
         state.tab = tab
+        Updater.shared.applyPreview(available: name == "open-update-badge" ? sampleRelease : nil)
         let view = NotchRoot(state: state, media: media, battery: battery,
                              calendar: ["calendar-join": meetingCalendar, "closed-meeting-soon": soonCalendar,
                                         "closed-meeting-now": nowCalendar, "closed-meeting-with-timer": soonCalendar][name] ?? calendar,
@@ -384,6 +417,22 @@ func renderSnapshots(to dir: String) {
     for (name, tab) in tabs {
         capture(SettingsView(initialTab: tab), size: NSSize(width: 520, height: 530), dark: false, to: dir, name: name)
     }
+
+    // The About tab in each update state.
+    let checked = Date().addingTimeInterval(-300)
+    let aboutStates: [(String, AppRelease?, Updater.Phase, Updater.Status, Date?)] = [
+        ("about-unchecked", nil, .idle, .none, nil),
+        ("about-uptodate", nil, .idle, .upToDate, checked),
+        ("about-available", sampleRelease, .idle, .none, checked),
+        ("about-downloading", sampleRelease, .downloading(0.42), .none, checked),
+        ("about-failed", sampleRelease, .idle, .failed("The download is damaged (checksum doesn't match). Nothing was changed."), checked),
+        ("about-error", nil, .idle, .failed("No release was found. If the repository is private, updates can't be checked."), nil),
+    ]
+    for (name, release, phase, status, last) in aboutStates {
+        Updater.shared.applyPreview(available: release, phase: phase, status: status, lastChecked: last)
+        capture(SettingsView(initialTab: .about), size: NSSize(width: 520, height: 530), dark: false, to: dir, name: "settings-\(name)")
+    }
+    Updater.shared.applyPreview(available: nil)
 }
 
 /// Host the view for real (ImageRenderer shows a "no entry" placeholder for scroll views) and save a PNG.

@@ -45,6 +45,23 @@ If you were sent `Notchly-<version>.zip` (or download it from the repo's Release
 Only replacing the macOS volume/brightness overlay needs the Accessibility permission; the other features
 work without it (Calendar and Automation each unlock their own feature).
 
+## Updates
+
+Notchly checks this repository's GitHub releases about once a day (switch it off, or check by hand, under
+**Settings → About**, or use *Check for Updates…* in the menu bar item). When a newer release exists, the gear in
+the notch gets an orange dot and the menu bar icon changes; **Install and Restart** then:
+
+1. downloads the release zip and verifies its SHA-256 against the published `.sha256` file,
+2. checks the new app has the same bundle identifier and is **signed by the same certificate** as the running
+   one (anything else is refused, so only a build made with the original signing key can be installed),
+3. swaps itself in and restarts. Your permissions are kept, because the signature is the same.
+
+Requirements: the repository must be **public** (GitHub hides a private repo's releases from the app), and
+Notchly must sit somewhere it may write to, such as `/Applications`. If macOS blocks the swap (App Management),
+or the app is somewhere read-only, use *Release Notes* to download the update and replace the app by hand.
+Versions released before this feature (0.1.2 and earlier) cannot update themselves; install the first version
+that has it by hand once.
+
 ## Making a release (for the maintainer)
 
 **Automatic (GitHub Actions).** Bump `CFBundleShortVersionString` in `Resources/Info.plist`, commit, then:
@@ -118,6 +135,7 @@ setup-signing.sh     one-time local signing certificate
 release.sh           build, sign and package a release zip
 setup-ci-signing.sh  one-time release certificate for the GitHub workflow
 .github/workflows/   the release workflow
+Sources/Notchly/Updater.swift   update check + self-update
 ```
 
 ### Debug preview tool
