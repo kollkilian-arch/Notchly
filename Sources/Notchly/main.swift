@@ -4,6 +4,11 @@ Pref.registerDefaults()
 
 let app = NSApplication.shared
 
+if let i = CommandLine.arguments.firstIndex(of: "--snapshot-experimental"), i + 1 < CommandLine.arguments.count {
+    MainActor.assumeIsolated { renderExperimentalSnapshots(to: CommandLine.arguments[i + 1]) }
+    exit(0)
+}
+
 if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
     MainActor.assumeIsolated { renderSnapshots(to: CommandLine.arguments[i + 1]) }
     exit(0)

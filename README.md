@@ -4,6 +4,35 @@ Makes use of the MacBook notch. Hover over it (or click it) and it expands into 
 centre; while it is closed it shows live activities on both sides of the camera cut-out.
 A native SwiftUI/AppKit app, in the spirit of Alcove and Dynamic Island apps.
 
+## Experimental branch
+
+The `experimental` branch previews the next dashboard. It keeps the closed notch and music outline,
+then opens into glass cards with a separate floating navigation strip. Use the layout button in the
+header to move or hide Music and Calendar, or switch the glass surface to black. Layout changes persist.
+The calendar keeps your selected day centred, supports dragging between dates, and shows per-day events
+(including all-day events), meeting links, and event dots. The existing meeting reminder still follows
+upcoming meetings independently of the day you browse.
+
+Stored Shelf items have **AirDrop** in the toolbar and context menu. The Music card’s output button
+selects macOS sound devices, including available AirPlay outputs; **AirPlay & Sound Settings** opens
+macOS for discovery. This controls the Mac’s sound output. Spotify Connect remains in Spotify.
+
+**Settings → About → Use experimental branch** selects stable or experimental updates. In an
+experimental build, switching it off also restores the classic interface immediately. **Install and
+Restart** changes the installed build, including returning to an older stable version. Both channels
+verify the checksum and signing certificate. Install stable 0.4.2 or later to retain the channel selector
+when returning from experimental. The Shelf is shared, and experimental layout settings are kept.
+
+Experimental releases use tags such as `v0.5.0-experimental.1`, are GitHub prereleases, and never become
+the stable channel’s latest release. To publish a new experiment, change the plist version on
+`experimental`, commit, and push its matching tag. Stable feature development stays on `main`.
+
+For deterministic layout previews without reading live calendars or controlling players:
+
+```bash
+build/Notchly.app/Contents/MacOS/Notchly --snapshot-experimental /tmp/notchly-experimental
+```
+
 ## Features
 
 **Tabs in the expanded notch**

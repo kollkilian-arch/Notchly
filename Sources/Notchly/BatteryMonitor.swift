@@ -7,6 +7,12 @@ final class BatteryMonitor: ObservableObject {
     @Published private(set) var pluggedIn = false
     @Published private(set) var hasBattery = false
 
+    init(previewLevel: Int, charging: Bool = false) {
+        level = previewLevel
+        hasBattery = true
+        isCharging = charging
+    }
+
     init() {
         update()
         let context = Unmanaged.passUnretained(self).toOpaque()

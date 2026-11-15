@@ -47,7 +47,9 @@ final class NotchState: ObservableObject {
         updateActivities(activityInputs, at: now)
     }
 
-    static let openSize = CGSize(width: 610, height: 178)
+    static var openSize: CGSize {
+        Pref.bool(Pref.useExperimentalBranch) ? CGSize(width: 760, height: 310) : CGSize(width: 610, height: 178)
+    }
     static let wing: CGFloat = 46
     static let timerWing: CGFloat = 60
     static let hudWing: CGFloat = 72
@@ -136,6 +138,7 @@ final class NotchController {
                 self.refreshActivities()
                 self.panel.alphaValue = (locked && !Pref.bool(Pref.lockIndicator)) ? 0 : 1
                 if locked {
+                    NotificationCenter.default.post(name: NotchInteraction.dismiss, object: nil)
                     ShelfPreview.shared.close()
                     self.cancelClose()
                     self.cancelOpen()
@@ -158,6 +161,11 @@ final class NotchController {
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in self?.relayout() }
+
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.relayout() }
+            .store(in: &cancellables)
 
         // Mouse monitors do not require any special permission.
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .leftMouseDown]
@@ -266,7 +274,7 @@ final class NotchController {
             if openRect().contains(p) {
                 cancelClose()
                 if dragging { state.tab = .shelf }
-            } else {
+            } else if !NotchInteraction.keepsOpen {
                 scheduleClose()
             }
         } else if hotRect(dragging: dragging).contains(p) {
@@ -305,8 +313,9 @@ final class NotchController {
     }
 
     private func scheduleClose() {
-        guard closeWork == nil else { return }
+        guard closeWork == nil, !NotchInteraction.keepsOpen else { return }
         let work = DispatchWorkItem { [weak self] in
+            guard !NotchInteraction.keepsOpen else { self?.closeWork = nil; return }
             self?.state.isOpen = false
             self?.closeWork = nil
             Feedback.sound(.close, if: Pref.soundOpenClose)

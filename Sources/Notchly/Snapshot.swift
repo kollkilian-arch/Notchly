@@ -1,6 +1,77 @@
 import SwiftUI
 import CoreAudio
 
+/// Deterministic experimental layouts, independent of real media, calendars, and network access.
+@MainActor
+func renderExperimentalSnapshots(to dir: String) {
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let defaults = UserDefaults.standard
+    let keys = [Pref.useExperimentalBranch, Pref.glassDashboard, Pref.dashboardLayout, Pref.showCalendar]
+    let domain = Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
+    let persisted = defaults.persistentDomain(forName: domain) ?? [:]
+    let saved = keys.map { persisted[$0] }
+    defer {
+        for (key, value) in zip(keys, saved) {
+            if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+        }
+    }
+    defaults.set(true, forKey: Pref.showCalendar)
+    let now = Date()
+    let meeting = Calendar.current.date(byAdding: .minute, value: 18, to: now)!
+    let calendar = CalendarMonitor(preview: [
+        CalEvent(id: "review", title: "Design review", start: meeting, end: meeting.addingTimeInterval(1800),
+                 color: .systemBlue, meeting: MeetingLink(url: URL(string: "https://meet.google.com/abc-defg-hij")!, service: "Google Meet")),
+        CalEvent(id: "planning", title: "Weekly planning", start: meeting.addingTimeInterval(86400),
+                 end: meeting.addingTimeInterval(88200), color: .systemOrange),
+    ])
+    let artwork = NSImage(size: NSSize(width: 100, height: 100), flipped: false) { rect in
+        NSGradient(starting: NSColor(calibratedRed: 0.75, green: 0.67, blue: 0.58, alpha: 1),
+                   ending: NSColor(calibratedRed: 0.16, green: 0.26, blue: 0.38, alpha: 1))?.draw(in: rect, angle: -45)
+        ("M83" as NSString).draw(at: NSPoint(x: 12, y: 10), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white])
+        return true
+    }
+    let media = MediaMonitor(preview: .init(
+        track: Track(source: .spotify, title: "Midnight City", artist: "M83", album: "Hurry Up, We’re Dreaming",
+                     duration: 244, artworkURL: nil), playing: true, position: 92), artwork: artwork, accent: .systemCyan)
+    let audio = AudioMonitor(preview: [
+        AudioOutputDevice(id: 1, uid: "speakers", name: "MacBook Pro Speakers", transport: kAudioDeviceTransportTypeBuiltIn),
+        AudioOutputDevice(id: 2, uid: "airpods", name: "AirPods Pro", transport: kAudioDeviceTransportTypeBluetooth),
+        AudioOutputDevice(id: 3, uid: "airplay", name: "Living Room", transport: kAudioDeviceTransportTypeAirPlay),
+    ], selected: 2)
+    let shelf = ShelfStore(storeURL: URL(fileURLWithPath: dir).appendingPathComponent("preview-shelf.json"))
+    if shelf.items.isEmpty { shelf.addText("Design notes"); shelf.addLink(URL(string: "https://example.com")!) }
+    var swapped = DashboardLayout(); swapped.move(.calendar, by: -1)
+    var calendarOnly = DashboardLayout(); calendarOnly.setVisible(.music, false)
+    let variants: [(String, Bool, Bool, String, NotchTab)] = [
+        ("glass-cards", true, true, "", .home),
+        ("black-cards", true, false, "", .home),
+        ("calendar-first", true, true, swapped.json, .home),
+        ("calendar-only", true, true, calendarOnly.json, .home),
+        ("shelf-airdrop", true, true, "", .shelf),
+        ("audio-outputs", true, true, "", .audio),
+        ("classic", false, false, "", .home),
+    ]
+    for (name, experimental, glass, layout, tab) in variants {
+        defaults.set(experimental, forKey: Pref.useExperimentalBranch)
+        defaults.set(glass, forKey: Pref.glassDashboard)
+        defaults.set(layout, forKey: Pref.dashboardLayout)
+        let state = NotchState(defaults: nil)
+        state.notchSize = CGSize(width: 190, height: 32)
+        state.isOpen = true
+        state.tab = tab
+        let view = NotchRoot(state: state, media: media, battery: BatteryMonitor(previewLevel: 82),
+                             calendar: calendar, hud: HUDMonitor(preview: nil), shelf: shelf,
+                             usage: UsageMonitor(preview: .idle), timer: TimerModel(preview: .idle, total: 0, remaining: 0),
+                             lock: LockMonitor(preview: .unlocked), scores: ScoresMonitor(preview: [], live: nil), audio: audio)
+            .frame(width: 820, height: 350)
+            .background(LinearGradient(colors: [Color(white: 0.35), Color(white: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        capture(view, size: NSSize(width: 820, height: 350), dark: true, to: dir, name: name)
+    }
+    capture(SettingsView(initialTab: .about), size: NSSize(width: 520, height: 530), dark: false,
+            to: dir, name: "experimental-settings")
+}
+
 /// Debug helper: `Notchly --snapshot <dir>` renders the notch views to PNGs and exits.
 /// Handy for checking layout without screen-recording permission.
 @MainActor

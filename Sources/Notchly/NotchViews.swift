@@ -17,6 +17,12 @@ struct NotchRoot: View {
     @AppStorage(Pref.closedMusicProgress) private var closedMusicProgress = true
     @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
 
+    @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
+    @AppStorage(Pref.glassDashboard) private var glass = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var panelHeight: CGFloat { size.height - (state.isOpen && experimental ? 48 : 0) }
+
     private var showsClosedProgress: Bool {
         !state.isOpen && closedMusicProgress && state.activity.displayed == .music
             && media.track.map { $0.duration.isFinite && $0.duration > 0 } == true
@@ -37,7 +43,7 @@ struct NotchRoot: View {
                       height: state.notchSize.height + (showsClosedProgress ? 2 : 0))
     }
 
-    var body: some View {
+    private var panel: some View {
         ZStack(alignment: .top) {
             // Each layer gets an explicit size so neither can stretch the other's layout.
             ClosedContent(state: state, media: media, battery: battery, hud: hud, timer: timer, lock: lock,
@@ -46,13 +52,13 @@ struct NotchRoot: View {
                 .opacity(state.isOpen ? 0 : 1)
 
             OpenContent(state: state, media: media, battery: battery, calendar: calendar, shelf: shelf, usage: usage, timer: timer, scores: scores, audio: audio)
-                .frame(width: NotchState.openSize.width, height: NotchState.openSize.height, alignment: .top)
+                .frame(width: NotchState.openSize.width, height: NotchState.openSize.height - (experimental ? 48 : 0), alignment: .top)
                 .opacity(state.isOpen ? 1 : 0)
                 .blur(radius: state.isOpen ? 0 : 8)
                 .allowsHitTesting(state.isOpen)
         }
-        .frame(width: size.width, height: size.height, alignment: .top)
-        .background(Color.black)
+        .frame(width: size.width, height: panelHeight, alignment: .top)
+        .background(GlassSurface(glass: state.isOpen && experimental && glass))
         .overlay {
             if showsClosedProgress, let track = media.track {
                 ClosedMusicProgress(position: media.position, duration: track.duration,
@@ -63,13 +69,26 @@ struct NotchRoot: View {
             }
         }
         .clipShape(NotchShape(topRadius: state.isOpen ? 19 : 6, bottomRadius: state.isOpen ? 26 : 12))
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            panel
+            if state.isOpen && experimental {
+                FloatingNavigation(state: state, shelf: shelf, usage: usage)
+                    .frame(height: 36)
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
-        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.isOpen)
+        .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.78), value: state.isOpen)
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.activity.displayed)
         .onAppear {
             state.updateActivities(activityInputs)
             media.setPositionTracking(tracksPosition)
+        }
+        .onChange(of: state.isOpen) { _, open in
+            if !open { NotificationCenter.default.post(name: NotchInteraction.dismiss, object: nil) }
         }
         .onChange(of: tracksPosition) { _, tracking in media.setPositionTracking(tracking) }
         .onDisappear { media.setPositionTracking(false) }
@@ -265,6 +284,8 @@ struct OpenContent: View {
     @ObservedObject var scores: ScoresMonitor
     @ObservedObject var audio: AudioMonitor
 
+    @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
+
     var body: some View {
         VStack(spacing: 0) {
             // Header sits beside the camera cut-out.
@@ -274,7 +295,9 @@ struct OpenContent: View {
 
             Group {
                 switch state.tab {
-                case .home: homeContent
+                case .home:
+                    if experimental { DashboardHome(media: media, calendar: calendar, audio: audio) }
+                    else { homeContent }
                 case .shelf: ShelfView(shelf: shelf, isActive: state.isOpen)
                 case .timer: TimerView(timer: timer)
                 case .scores: ScoresView(scores: scores)
@@ -313,7 +336,8 @@ struct OpenContent: View {
                 }
                 Spacer(minLength: state.notchSize.width)
                 HStack(spacing: 8) {
-                    TabSwitcher(state: state, shelf: shelf, usage: usage)
+                    if experimental { LayoutEditorButton() }
+                    else { TabSwitcher(state: state, shelf: shelf, usage: usage) }
                     if battery.hasBattery { BatteryPill(battery: battery, compact: true).fixedSize() }
                 }
             }

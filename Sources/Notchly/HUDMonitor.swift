@@ -53,6 +53,8 @@ final class HUDMonitor: ObservableObject {
     // 'vmvc' = kAudioHardwareServiceDeviceProperty_VirtualMainVolume
     private let virtualMainVolume: AudioObjectPropertySelector = 0x766D_7663
 
+    init(preview event: HUDEvent?) { self.event = event }
+
     init() {
         audioBlock = { [weak self] _, _ in self?.audioChanged() }
         deviceBlock = { [weak self] _, _ in self?.rebindDevice() }

@@ -67,6 +67,21 @@ final class MediaMonitor: NSObject, ObservableObject {
     private var trackingPosition = false
     private var ticks = 0
     private var lastEnabled: [Bool]
+    private var isPreview = false
+
+    /// Fixed sample playback for layout verification; never controls a real player.
+    init(preview snapshot: Snapshot, artwork: NSImage? = nil, accent: NSColor? = nil) {
+        fetch = { snapshot }
+        lastEnabled = []
+        super.init()
+        isPreview = true
+        track = snapshot.track
+        isPlaying = snapshot.playing
+        position = snapshot.position
+        clock = PositionClock(base: snapshot.position, at: Date(), playing: snapshot.playing)
+        self.artwork = artwork
+        self.accent = accent
+    }
 
     /// - Parameters:
     ///   - distributed: where the players post their playback notifications.
@@ -150,6 +165,7 @@ final class MediaMonitor: NSObject, ObservableObject {
     /// locally every second and is re-read from the player every few seconds; when `false`,
     /// nothing runs.
     func setPositionTracking(_ on: Bool) {
+        guard !isPreview else { return }
         guard on != trackingPosition else { return }
         trackingPosition = on
         positionTimer?.invalidate()
@@ -187,6 +203,7 @@ final class MediaMonitor: NSObject, ObservableObject {
         position = target                                       // move the bar immediately
         clock = PositionClock(base: target, at: Date(), playing: isPlaying)
         positionLockedUntil = Date().addingTimeInterval(0.8)
+        guard !isPreview else { return }
         queue.async {
             _ = Self.run("tell application \"\(source.rawValue)\" to set player position to \(Int(target))")
         }
@@ -194,6 +211,10 @@ final class MediaMonitor: NSObject, ObservableObject {
     }
 
     private func command(_ verb: String) {
+        if isPreview {
+            if verb == "playpause" { isPlaying.toggle() }
+            return
+        }
         guard let source = track?.source else { return }
         queue.async {
             _ = Self.run("tell application \"\(source.rawValue)\" to \(verb)")

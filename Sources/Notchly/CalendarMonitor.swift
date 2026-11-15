@@ -9,6 +9,7 @@ struct CalEvent: Identifiable, Equatable {
     let color: NSColor
     /// A video-call link found in the event's URL, location or notes.
     var meeting: MeetingLink? = nil
+    var isAllDay = false
 
     /// Unique per occurrence (a recurring event keeps one identifier for all its occurrences).
     var occurrenceKey: String { "\(id)|\(Int(start.timeIntervalSince1970))" }
@@ -20,6 +21,9 @@ final class CalendarMonitor: ObservableObject {
     @Published private(set) var denied = false
     /// Meetings the user has already joined: no more indicator for these.
     @Published private(set) var joinedMeetings: Set<String> = []
+    @Published private(set) var browsingDay = Date()
+    @Published private(set) var weekEvents: [CalEvent] = []
+    private var isPreview = false
 
     /// Longest the list goes without a refresh: events that come into the 48-hour window as time
     /// passes are the only thing that can change without a notification.
@@ -46,6 +50,8 @@ final class CalendarMonitor: ObservableObject {
         self.events = events
         self.authorized = authorized
         self.denied = denied
+        weekEvents = events
+        isPreview = true
     }
 
     deinit {
@@ -99,6 +105,22 @@ final class CalendarMonitor: ObservableObject {
         joinedMeetings.insert(event.occurrenceKey)
     }
 
+    static func carouselDays(centeredOn day: Date, calendar: Calendar = .current) -> [Date] {
+        let start = calendar.startOfDay(for: day)
+        return (-3...3).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    static func events(_ events: [CalEvent], on day: Date, calendar: Calendar = .current) -> [CalEvent] {
+        let start = calendar.startOfDay(for: day)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
+        return events.filter { $0.start < end && $0.end > start }.sorted { $0.start < $1.start }
+    }
+
+    func selectDay(_ day: Date) {
+        browsingDay = Calendar.current.startOfDay(for: day)
+        reload()
+    }
+
     func requestAccessIfNeeded() {
         guard EKEventStore.authorizationStatus(for: .event) == .notDetermined else { return }
         requestAccess()
@@ -118,7 +140,7 @@ final class CalendarMonitor: ObservableObject {
     }
 
     func reload() {
-        guard authorized else { return }
+        guard authorized, !isPreview else { return }
         let now = Date()
         let end = Calendar.current.date(byAdding: .hour, value: 48, to: now) ?? now.addingTimeInterval(172_800)
         let predicate = store.predicateForEvents(withStart: now, end: end, calendars: nil)
@@ -135,6 +157,17 @@ final class CalendarMonitor: ObservableObject {
                                                         $0.structuredLocation?.title, $0.notes]))
             }
         if loaded != events { events = loaded }       // an unchanged list must not redraw the notch
+        if Pref.bool(Pref.useExperimentalBranch), let first = Self.carouselDays(centeredOn: browsingDay).first,
+           let last = Calendar.current.date(byAdding: .day, value: 7, to: first) {
+            let range = store.predicateForEvents(withStart: first, end: last, calendars: nil)
+            let weekly = store.events(matching: range).sorted { $0.startDate < $1.startDate }.map {
+                CalEvent(id: $0.eventIdentifier ?? UUID().uuidString, title: $0.title ?? "Untitled",
+                         start: $0.startDate, end: $0.endDate, color: $0.calendar.color ?? .systemBlue,
+                         meeting: MeetingLinks.find(in: [$0.url?.absoluteString, $0.location, $0.notes]),
+                         isAllDay: $0.isAllDay)
+            }
+            if weekly != weekEvents { weekEvents = weekly }
+        }
         scheduleReload(now: now)
     }
 }

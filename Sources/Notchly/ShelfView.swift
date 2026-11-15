@@ -7,6 +7,7 @@ struct ShelfView: View {
     var isActive = true
     var pasteboard: NSPasteboard = .general
     @State private var targeted = false
+    @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
 
     var body: some View {
         VStack(spacing: 4) {
@@ -17,6 +18,13 @@ struct ShelfView: View {
                 if !shelf.items.isEmpty {       // nothing to preview or open yet
                     Text("Space to preview · double-click to open")
                         .foregroundStyle(.white.opacity(0.4))
+                }
+                if experimental, let selected = shelf.selectedItem {
+                    Button {
+                        ShelfSharing.shared.share(selected) { shelf.errorMessage = $0 }
+                    } label: { Label("AirDrop", systemImage: "airdrop") }
+                    .buttonStyle(.plain)
+                    .disabled(!ShelfSharing.canShare(selected))
                 }
                 Button { shelf.paste(from: pasteboard) } label: {
                     Label("Paste", systemImage: "doc.on.clipboard")
@@ -83,6 +91,7 @@ struct ShelfTile: View {
     @ObservedObject var shelf: ShelfStore
     @State private var thumbnail: NSImage?
     @State private var hovering = false
+    @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
     private var selected: Bool { shelf.selectedID == item.id }
 
     // This view is built from several small pieces on purpose: one long chain of modifiers is slow
@@ -163,6 +172,12 @@ struct ShelfTile: View {
         Button("Preview") { ShelfPreview.shared.show(item) }
         Button("Open") { NSWorkspace.shared.open(item.url) }
         Button("Copy") { item.copy() }
+        if experimental {
+            Button("Share via AirDrop…") {
+                ShelfSharing.shared.share(item) { shelf.errorMessage = $0 }
+            }
+            .disabled(!ShelfSharing.canShare(item))
+        }
         if item.kind == .file || item.kind == .image {
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
         }
