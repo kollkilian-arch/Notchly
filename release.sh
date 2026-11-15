@@ -7,14 +7,21 @@
 # The version comes from Resources/Info.plist (CFBundleShortVersionString).
 # Signing uses the stable local identity from ./setup-signing.sh: with a fixed signature, the
 # recipient's macOS keeps their Accessibility / Calendar / Automation approvals across updates.
-# An ad-hoc signature would change every release, so this script refuses to use one.
+# An ad-hoc signature would change every release, so this script refuses to use one
+# unless you explicitly allow it with ALLOW_ADHOC=1 (used by CI when no certificate secret is set).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 IDENTITY="${SIGN_IDENTITY:-Notchly Local Signing}"
 if ! security find-identity -p codesigning | grep -q "\"$IDENTITY\""; then
-    echo "error: signing identity \"$IDENTITY\" not found. Run ./setup-signing.sh first." >&2
-    exit 1
+    if [ "${ALLOW_ADHOC:-0}" = "1" ]; then
+        echo "warning: signing identity \"$IDENTITY\" not found; this release will be signed ad-hoc," >&2
+        echo "         so macOS will ask the recipient for permissions again after every update." >&2
+    else
+        echo "error: signing identity \"$IDENTITY\" not found. Run ./setup-signing.sh first" >&2
+        echo "       (or set ALLOW_ADHOC=1 to build with an unstable ad-hoc signature)." >&2
+        exit 1
+    fi
 fi
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"

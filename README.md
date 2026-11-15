@@ -47,15 +47,30 @@ work without it (Calendar and Automation each unlock their own feature).
 
 ## Making a release (for the maintainer)
 
+**Automatic (GitHub Actions).** Bump `CFBundleShortVersionString` in `Resources/Info.plist`, commit, then:
+
 ```bash
-./setup-signing.sh      # once
-./release.sh            # builds, signs, checks, and writes dist/Notchly-<version>.zip + .sha256
+git tag v0.2.0 && git push origin main v0.2.0
 ```
 
-The version is read from `Resources/Info.plist` (`CFBundleShortVersionString`); bump it first. `release.sh`
-refuses to run without the stable signing identity, because an ad-hoc signature would make every release look
-like a different app to macOS. Then tag the commit (`git tag v<version> && git push origin v<version>`) and
-attach the zip and checksum to a GitHub release for that tag. `dist/` is git-ignored on purpose.
+The *Release* workflow builds the app on GitHub, signs it, checks that the tag matches the plist version, and
+publishes a release with `Notchly-<version>.zip` and its checksum attached. To release a tag that already exists
+(for example `v0.1.0`), run the workflow manually: *Actions → Release → Run workflow* and enter the tag.
+
+**One-time setup for stable signing.** The workflow signs with a dedicated release certificate stored as two
+repository secrets, so every release carries the same signature and users keep their permission approvals.
+
+```bash
+./setup-ci-signing.sh   # writes two files to ~/Notchly-release-signing (outside the repo)
+```
+
+Add their contents as repository secrets named `RELEASE_CERT_P12_BASE64` and `RELEASE_CERT_PASSWORD`
+(*Settings → Secrets and variables → Actions*), then delete that folder. Without the secrets the workflow still
+works, but falls back to an ad-hoc signature and says so in its log and in the release notes.
+
+**Manual alternative.** `./setup-signing.sh` once, then `./release.sh` builds, signs (with your local identity)
+and writes `dist/Notchly-<version>.zip` plus a `.sha256`; attach those to a release yourself. `release.sh`
+refuses an ad-hoc signature unless you set `ALLOW_ADHOC=1`. `dist/` is git-ignored on purpose.
 
 ## Build and run
 
@@ -100,6 +115,9 @@ Sources/Notchly/     the app (one file per feature: NotchViews, MediaMonitor, Ti
 Resources/Info.plist app metadata and permission descriptions
 build.sh             build + sign into build/Notchly.app
 setup-signing.sh     one-time local signing certificate
+release.sh           build, sign and package a release zip
+setup-ci-signing.sh  one-time release certificate for the GitHub workflow
+.github/workflows/   the release workflow
 ```
 
 ### Debug preview tool
