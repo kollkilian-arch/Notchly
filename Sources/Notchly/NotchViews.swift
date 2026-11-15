@@ -81,6 +81,8 @@ struct NotchRoot: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
+        .allowsHitTesting(state.fullscreenBehavior != .hide)
+        .accessibilityHidden(state.fullscreenBehavior == .hide)
         .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.78), value: state.isOpen)
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.activity.displayed)
         .onAppear {

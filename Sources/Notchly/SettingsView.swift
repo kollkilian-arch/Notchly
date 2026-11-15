@@ -260,6 +260,7 @@ private struct AboutSettings: View {
 // MARK: - Notch
 
 private struct NotchSettings: View {
+    @AppStorage(Pref.fullscreenBehavior) private var fullscreenBehavior = FullscreenBehavior.dim.rawValue
     @AppStorage(Pref.openOnHover) private var openOnHover = true
     @AppStorage(Pref.hoverDelay) private var hoverDelay = 0.0
     @AppStorage(Pref.closeDelay) private var closeDelay = 0.25
@@ -281,6 +282,18 @@ private struct NotchSettings: View {
                 Text(openOnHover
                      ? "Dragging files, links, text, or images toward the notch always opens the shelf."
                      : "With hover off, click the notch to open it. Dragging files, links, text, or images toward it still opens the shelf.")
+            }
+
+            Section {
+                Picker("When an app is fullscreen", selection: $fullscreenBehavior) {
+                    ForEach(FullscreenBehavior.allCases, id: \.rawValue) { behavior in
+                        Text(behavior.title).tag(behavior.rawValue)
+                    }
+                }
+            } header: {
+                Text("Fullscreen")
+            } footer: {
+                Text("Applies to apps and video players on the notch’s display. Dim uses 25% opacity until you open the notch. Hide also disables hover, clicks and drops until fullscreen ends.")
             }
 
             Section("While the notch is closed") {

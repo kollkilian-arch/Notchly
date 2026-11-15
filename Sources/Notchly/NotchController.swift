@@ -5,6 +5,7 @@ import Combine
 enum NotchTab: CaseIterable { case home, shelf, timer, scores, usage, audio }
 
 final class NotchState: ObservableObject {
+    @Published var fullscreenBehavior: FullscreenBehavior = .show
     @Published var isOpen = false
     @Published var tab: NotchTab = .home
     @Published var notchSize = CGSize(width: 190, height: 32)
@@ -94,6 +95,10 @@ final class NotchController {
                                              hud: hud, timer: timer, lock: lock, scores: scores, audio: audio))
     }
 
+    private func updateHitTesting() {
+        panel.ignoresMouseEvents = state.fullscreenBehavior == .hide || !state.isOpen
+    }
+
     private var closedWidth: CGFloat { state.notchSize.width + state.activity.wingWidth * 2 }
 
     func start() {
@@ -136,7 +141,7 @@ final class NotchController {
                 guard let self else { return }
                 let locked = phase == .locked
                 self.refreshActivities()
-                self.panel.alphaValue = (locked && !Pref.bool(Pref.lockIndicator)) ? 0 : 1
+                self.refreshFullscreen()
                 if locked {
                     NotificationCenter.default.post(name: NotchInteraction.dismiss, object: nil)
                     ShelfPreview.shared.close()
@@ -152,7 +157,8 @@ final class NotchController {
         state.$isOpen
             .receive(on: DispatchQueue.main)
             .sink { [weak self] open in
-                self?.panel.ignoresMouseEvents = !open
+                self?.updateHitTesting()
+                self?.updateVisibility()
                 if !open { self?.panel.resignKey() }
             }
             .store(in: &cancellables)
@@ -166,6 +172,17 @@ final class NotchController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.relayout() }
             .store(in: &cancellables)
+
+        // Poll for in-app video fullscreen as well as native fullscreen Spaces.
+        Timer.publish(every: 0.75, on: .main, in: .common).autoconnect()
+            .sink { [weak self] _ in self?.refreshFullscreen() }
+            .store(in: &cancellables)
+        for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
+            NSWorkspace.shared.notificationCenter.publisher(for: name)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.refreshFullscreen() }
+                .store(in: &cancellables)
+        }
 
         // Mouse monitors do not require any special permission.
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .leftMouseDown]
@@ -214,6 +231,34 @@ final class NotchController {
         let h = NotchState.openSize.height + 24
         let f = screen.frame
         panel.setFrame(NSRect(x: f.midX - w / 2, y: f.maxY - h, width: w, height: h), display: true)
+        refreshFullscreen()
+    }
+
+    private func refreshFullscreen() {
+        guard screen != nil else { return }
+        let preference = FullscreenBehavior(rawValue: UserDefaults.standard.string(forKey: Pref.fullscreenBehavior) ?? "") ?? .dim
+        let behavior: FullscreenBehavior = lock.phase == .unlocked && preference != .show
+            && FullscreenDetection.isFullscreen(on: screen) ? preference : .show
+        if state.fullscreenBehavior != behavior {
+            state.fullscreenBehavior = behavior
+            if behavior != .show {
+                cancelOpen()
+                cancelClose()
+                NotificationCenter.default.post(name: NotchInteraction.dismiss, object: nil)
+                ShelfPreview.shared.close()
+                state.isOpen = false
+                panel.resignKey()
+            }
+            updateHitTesting()
+        }
+        updateVisibility()
+    }
+
+    private func updateVisibility() {
+        let alpha: CGFloat = lock.phase == .locked
+            ? (Pref.bool(Pref.lockIndicator) ? 1 : 0)
+            : (lock.phase == .unlocked ? state.fullscreenBehavior.opacity(isOpen: state.isOpen) : 1)
+        if panel.alphaValue != alpha { panel.alphaValue = alpha }
     }
 
     // MARK: Geometry
@@ -239,7 +284,7 @@ final class NotchController {
     // MARK: Mouse handling
 
     private func handleMouse(_ event: NSEvent) {
-        guard screen != nil, lock.phase != .locked else { return }   // never open while locked
+        guard screen != nil, lock.phase != .locked, state.fullscreenBehavior != .hide else { return }   // never open while locked
         refreshActivities()
         if event.type == .leftMouseDown {
             dragPasteboardCount = NSPasteboard(name: .drag).changeCount
@@ -298,6 +343,7 @@ final class NotchController {
     }
 
     private func openNotch(dragging: Bool) {
+        guard lock.phase != .locked, state.fullscreenBehavior != .hide else { return }
         cancelClose()
         cancelOpen()
         refreshActivities()

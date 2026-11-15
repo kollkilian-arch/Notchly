@@ -59,6 +59,12 @@ build/Notchly.app/Contents/MacOS/Notchly --snapshot-experimental /tmp/notchly-ex
 Shows a timer, meeting reminder, live score, music (artwork + equalizer), or charging status.
 While music is shown, a thin album-coloured progress line follows the left, bottom, and right edges.
 Switch it off under **Settings → Home → Show song progress around the closed notch**.
+
+Under **Settings → Notch → Fullscreen**, choose **Show normally**, **Dim** (the default,
+25% opacity), or **Hide** when an app or video fills the notch’s display. Opening a dimmed
+notch restores full opacity. Hide also disables hover, clicks and drops
+until fullscreen ends. Fullscreen detection uses window bounds; a maximized window with
+a hidden Dock can also match. Fullscreen on another display does not affect the notch.
 Choose and pin an activity, cycle between active ones, or let automatic priorities decide.
 The lock padlock and volume/brightness HUD take priority; important timer and meeting alerts briefly
 interrupt your chosen activity.

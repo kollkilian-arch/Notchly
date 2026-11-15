@@ -13,6 +13,7 @@ enum Pref {
     static let lastUpdateCheck = "lastUpdateCheck"             // seconds since 1970
 
     // Notch
+    static let fullscreenBehavior = "fullscreenBehavior"
     static let openOnHover = "openOnHover"
     static let hoverDelay = "hoverDelay"                       // seconds
     static let closeDelay = "closeDelay"                       // seconds
@@ -55,6 +56,7 @@ enum Pref {
             useExperimentalBranch: UpdateChannel.current == .experimental,
             glassDashboard: true,
             dashboardLayout: "",
+            fullscreenBehavior: FullscreenBehavior.dim.rawValue,
             openOnHover: true,
             hoverDelay: 0.0,
             closeDelay: 0.25,
