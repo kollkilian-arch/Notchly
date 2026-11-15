@@ -84,7 +84,9 @@ enum ScoresPrefs {
 /// - A favourite team's next game and latest result come from its schedule (cached for a few hours).
 /// - Polling is adaptive: every 20 s while a favourite is playing, every 5 minutes otherwise,
 ///   and not at all while the feature is switched off.
-final class ScoresMonitor: ObservableObject {
+// `@unchecked Sendable`: all state changes happen on the main thread (results are handed back via
+// DispatchQueue.main), the background task only reads value copies.
+final class ScoresMonitor: ObservableObject, @unchecked Sendable {
     struct Flash: Equatable {
         let homeScored: Bool
         let until: Date
@@ -265,9 +267,21 @@ final class ScoresMonitor: ObservableObject {
             let candidates = (scoreboard.filter { $0.involves(fav) } + (schedules[fav.id] ?? []))
                 .filter { seen.insert($0.id).inserted }          // the scoreboard copy is fresher: it comes first
 
-            let pick = candidates.first { $0.state == .live }
-                ?? candidates.filter { $0.state == .final && now.timeIntervalSince($0.start) < 18 * 3600 }.max { $0.start < $1.start }
-                ?? candidates.filter { $0.state == .upcoming && $0.start > now.addingTimeInterval(-3600) }.min { $0.start < $1.start }
+            // Written as separate steps (a chain of `??` with closures is slow for the compiler to type-check).
+            var pick: Game? = candidates.first { $0.state == .live }
+            if pick == nil {
+                let recentFinals = candidates.filter { game in
+                    game.state == .final && now.timeIntervalSince(game.start) < 18 * 3600
+                }
+                pick = recentFinals.max { $0.start < $1.start }
+            }
+            if pick == nil {
+                let cutoff = now.addingTimeInterval(-3600)
+                let upcoming = candidates.filter { game in
+                    game.state == .upcoming && game.start > cutoff
+                }
+                pick = upcoming.min { $0.start < $1.start }
+            }
             if let pick, !picks.contains(where: { $0.id == pick.id }) { picks.append(pick) }
         }
         return Array(order(picks).prefix(3))

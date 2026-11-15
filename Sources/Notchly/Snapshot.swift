@@ -219,15 +219,33 @@ func renderSnapshots(to dir: String) {
     // Synthesised lock sounds: write them out and report basic measurements.
     for (name, data) in [("lock-clack", SynthSounds.lockClack()), ("unlock-click", SynthSounds.unlockClick())] {
         try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).wav"))
-        let pcm: [Int16] = stride(from: 44, to: data.count - 1, by: 2).map {
-            Int16(bitPattern: UInt16(data[$0]) | UInt16(data[$0 + 1]) << 8)
+        // Written step by step: older Swift compilers time out on one long mixed-arithmetic expression.
+        var pcm: [Int16] = []
+        var offset = 44                                   // skip the 44-byte WAV header
+        while offset + 1 < data.count {
+            let low = UInt16(data[offset])
+            let high = UInt16(data[offset + 1])
+            pcm.append(Int16(bitPattern: low | (high << 8)))
+            offset += 2
         }
-        let rms = (pcm.map { Double($0) * Double($0) }.reduce(0, +) / Double(pcm.count)).squareRoot() / 32767
-        let peak = Double(pcm.map { abs(Int($0)) }.max() ?? 0) / 32767
-        let loads = NSSound(data: data) != nil
-        print(String(format: "sound %@: %.0f ms, peak %.2f, rms %.3f (%.0f dBFS), first=%d last=%d, NSSound loads=%@",
-                     name, Double(pcm.count) / SynthSounds.sampleRate * 1000, peak, rms, 20 * log10(rms),
-                     Int(pcm.first ?? 0), Int(pcm.last ?? 0), loads ? "yes" : "NO"))
+        var sumOfSquares = 0.0
+        var peakSample = 0
+        for sample in pcm {
+            let value = Double(sample)
+            sumOfSquares += value * value
+            peakSample = max(peakSample, abs(Int(sample)))
+        }
+        let count = Double(pcm.count)
+        let rms: Double = (sumOfSquares / count).squareRoot() / 32767
+        let peak: Double = Double(peakSample) / 32767
+        let milliseconds: Double = count / SynthSounds.sampleRate * 1000
+        let dbfs: Double = 20 * log10(rms)
+        let first = Int(pcm.first ?? 0)
+        let last = Int(pcm.last ?? 0)
+        let loads = NSSound(data: data) != nil ? "yes" : "NO"
+        let line = String(format: "sound %@: %.0f ms, peak %.2f, rms %.3f (%.0f dBFS), first=%d last=%d, NSSound loads=%@",
+                          name, milliseconds, peak, rms, dbfs, first, last, loads)
+        print(line)
     }
 
     // Artwork colour extraction on synthetic images with known answers, plus the real artwork below.
