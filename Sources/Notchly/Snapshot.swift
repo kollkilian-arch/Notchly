@@ -53,6 +53,13 @@ func renderExperimentalSnapshots(to dir: String) {
         ("shelf-airdrop", true, true, "", .shelf),
         ("shelf-empty", true, true, "", .shelf),
         ("audio-outputs", true, true, "", .audio),
+        ("timer-idle", true, true, "", .timer),
+        ("timer-running", true, true, "", .timer),
+        ("timer-finished", true, true, "", .timer),
+        ("scores-many", true, true, "", .scores),
+        ("scores-empty", true, true, "", .scores),
+        ("usage-local", true, true, "", .usage),
+        ("usage-limits", true, true, "", .usage),
         ("classic", false, false, "", .home),
     ]
     for (name, experimental, glass, layout, tab) in variants {
@@ -64,10 +71,21 @@ func renderExperimentalSnapshots(to dir: String) {
         state.notchSize = CGSize(width: 190, height: 32)
         state.isOpen = true
         state.tab = tab
+        let side = Game.Side(teamID: "1", name: "Bayern Munich", code: "BAY", score: 2, logo: nil)
+        let opponent = Game.Side(teamID: "2", name: "Borussia Dortmund", code: "DOR", score: 1, logo: nil)
+        let games = (0..<8).map { index in
+            Game(id: "preview/\(index)", leagueID: "league", leagueName: "Bundesliga",
+                 start: now, state: .live, detail: "67′", home: side, away: opponent)
+        }
+        let usageState: UsageState = name == "usage-limits"
+            ? .limits(LimitUsage(fiveHour: LimitWindow(percent: 37, resetsAt: now.addingTimeInterval(7200)),
+                                 sevenDay: LimitWindow(percent: 84, resetsAt: now.addingTimeInterval(86400)), plan: "pro", fetched: now))
+            : .local(LocalUsage(last5h: 412_300, last7d: 14_800_000), note: "Claude sign-in expired. Run ‘claude’ once to refresh it.")
+        let timerPhase: TimerModel.Phase = name == "timer-running" ? .running : (name == "timer-finished" ? .finished : .idle)
         let view = NotchRoot(state: state, media: media, battery: BatteryMonitor(previewLevel: 82),
                              calendar: calendar, hud: HUDMonitor(preview: nil), shelf: name == "shelf-empty" ? emptyShelf : shelf,
-                             usage: UsageMonitor(preview: .idle), timer: TimerModel(preview: .idle, total: 0, remaining: 0),
-                             lock: LockMonitor(preview: .unlocked), scores: ScoresMonitor(preview: [], live: nil), audio: audio)
+                             usage: UsageMonitor(preview: usageState), timer: TimerModel(preview: timerPhase, total: 600, remaining: 420),
+                             lock: LockMonitor(preview: .unlocked), scores: ScoresMonitor(preview: name == "scores-many" ? games : [], live: nil), audio: audio)
             .frame(width: 820, height: 350)
             .background(LinearGradient(colors: [Color(white: 0.35), Color(white: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing))
         capture(view, size: NSSize(width: 820, height: 350), dark: true, to: dir, name: name)

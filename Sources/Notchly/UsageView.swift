@@ -97,7 +97,8 @@ struct UsageView: View {
                 usage.refresh(force: true)
                 usage.refreshHeatmap(force: true)
             } label: {
-                Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold))
+                Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold))
+                    .frame(width: 30, height: 28)
             }
             .buttonStyle(IconButtonStyle())
         }

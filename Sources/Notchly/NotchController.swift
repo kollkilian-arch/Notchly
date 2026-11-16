@@ -49,7 +49,7 @@ final class NotchState: ObservableObject {
     }
 
     static var openSize: CGSize {
-        Pref.bool(Pref.useExperimentalBranch) ? CGSize(width: 760, height: 310) : CGSize(width: 610, height: 178)
+        Pref.bool(Pref.useExperimentalBranch) ? CGSize(width: 660, height: 274) : CGSize(width: 610, height: 178)
     }
     static let wing: CGFloat = 46
     static let timerWing: CGFloat = 60

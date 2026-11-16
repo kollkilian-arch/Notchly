@@ -42,7 +42,7 @@ struct DashboardHome: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ForEach(widgets) { widget in
                 Group {
                     switch widget {
@@ -60,7 +60,7 @@ struct DashboardHome: View {
                     case .calendar: CalendarCarousel(calendar: calendar)
                     }
                 }
-                .padding(14)
+                .padding(11)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(RoundedRectangle(cornerRadius: 18).fill(.black.opacity(0.22)))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
@@ -78,7 +78,7 @@ struct LayoutEditorButton: View {
 
     var body: some View {
         Button { showing.toggle() } label: {
-            Image(systemName: "rectangle.3.group").font(.system(size: 12)).frame(width: 24, height: 22)
+            Image(systemName: "rectangle.3.group").font(.system(size: 12)).frame(width: 30, height: 28)
         }
         .buttonStyle(.plain)
         .help("Edit dashboard layout")
@@ -146,7 +146,7 @@ struct FloatingNavigation: View {
                         }
                     }
                     .font(.system(size: 10, weight: .medium))
-                    .padding(.horizontal, 11).frame(height: 28)
+                    .padding(.horizontal, 12).frame(minWidth: 40, minHeight: 32)
                     .foregroundStyle(.white.opacity(state.tab == tab ? 1 : 0.6))
                     .background(Capsule().fill(.white.opacity(state.tab == tab ? 0.16 : 0)))
                     .contentShape(Capsule())

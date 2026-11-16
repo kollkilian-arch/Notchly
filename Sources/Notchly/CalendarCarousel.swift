@@ -12,7 +12,7 @@ struct CalendarCarousel: View {
             HStack(spacing: 8) {
                 Button { calendar.selectDay(Date()) } label: {
                     Text(calendar.browsingDay.formatted(.dateTime.month(.abbreviated)))
-                        .font(.system(size: 23, weight: .bold))
+                        .font(.system(size: 19, weight: .bold))
                         .fixedSize()
                 }
                 .buttonStyle(.plain)
@@ -23,7 +23,7 @@ struct CalendarCarousel: View {
                         dayButton(day, distance: abs(index - 3))
                     }
                 }
-                .frame(height: 55)
+                .frame(height: 46)
                 .background(CalendarSwipeInput(shift: shift))
                 .highPriorityGesture(DragGesture(minimumDistance: 14).onEnded { value in
                     guard abs(value.translation.width) > abs(value.translation.height) else { return }
@@ -67,7 +67,8 @@ struct CalendarCarousel: View {
                 dayStepButton(-1, symbol: "chevron.left", label: "Previous day")
                 Spacer()
                 Button("Today") { calendar.selectDay(Date()) }
-                    .font(.system(size: 9)).foregroundStyle(.white.opacity(0.4)).buttonStyle(.plain)
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.6))
+                    .frame(minWidth: 48, minHeight: 28).contentShape(Rectangle()).buttonStyle(.plain)
                 Spacer()
                 dayStepButton(1, symbol: "chevron.right", label: "Next day")
             }
@@ -85,7 +86,7 @@ struct CalendarCarousel: View {
                 Text(day.formatted(.dateTime.weekday(.narrow)))
                     .font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
                 Text(day.formatted(.dateTime.day()))
-                    .font(.system(size: selected ? 22 : 16, weight: selected ? .bold : .medium))
+                    .font(.system(size: selected ? 19 : 15, weight: selected ? .bold : .medium))
                     .foregroundStyle(today ? Color.accentColor : .white.opacity(selected ? 1 : 0.65))
                 Circle().fill(hasEvents ? Color.accentColor : .clear).frame(width: 3, height: 3)
             }
@@ -102,7 +103,7 @@ struct CalendarCarousel: View {
 
     private func dayStepButton(_ offset: Int, symbol: String, label: String) -> some View {
         Button { shift(offset) } label: {
-            Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).frame(width: 18, height: 22)
+            Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).frame(width: 30, height: 28)
         }.buttonStyle(.plain).help(label).accessibilityLabel(label)
     }
 

@@ -31,15 +31,17 @@ struct AudioView: View {
                 Spacer(minLength: 0)
                 if audio.errorMessage != nil {
                     Button("Retry") { audio.refresh() }.buttonStyle(.plain)
+                        .frame(minHeight: 28).contentShape(Rectangle())
                 }
                 Button("Sound Settings") {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.7))
+                .frame(minHeight: 28).contentShape(Rectangle())
             }
             .font(.system(size: 10))
-            .frame(height: 16)
+            .frame(height: 28)
         }
         .onAppear { audio.refreshBatteriesIfNeeded() }
     }
@@ -79,7 +81,7 @@ private struct AudioDeviceRow: View {
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 2)
+            .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(selected ? 0.1 : 0.035)))
             .contentShape(Rectangle())
         }

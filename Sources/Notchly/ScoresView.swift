@@ -10,8 +10,10 @@ struct ScoresView: View {
             if scores.games.isEmpty {
                 empty
             } else {
-                VStack(spacing: 5) {
-                    ForEach(scores.games) { GameRow(game: $0, flash: scores.flashes[$0.id]) }
+                ScrollView {
+                    VStack(spacing: 5) {
+                        ForEach(scores.games) { GameRow(game: $0, flash: scores.flashes[$0.id]) }
+                    }
                 }
             }
             Spacer(minLength: 4)
@@ -48,7 +50,8 @@ struct ScoresView: View {
                 .lineLimit(1)
             Spacer()
             Button { scores.refresh(force: true) } label: {
-                Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold))
+                Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold))
+                    .frame(width: 30, height: 28)
             }
             .buttonStyle(IconButtonStyle())
         }

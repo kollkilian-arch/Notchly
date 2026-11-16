@@ -6,9 +6,9 @@ struct ExperimentalPlayer: View {
 
     var body: some View {
         if let track = media.track {
-            VStack(spacing: 10) {
+            VStack(spacing: 6) {
                 HStack(spacing: 12) {
-                    ArtworkView(image: media.artwork, size: 54, radius: 8)
+                    ArtworkView(image: media.artwork, size: 48, radius: 8)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(track.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                         Text(track.artist).font(.system(size: 11)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
@@ -19,7 +19,7 @@ struct ExperimentalPlayer: View {
                             tint: media.tint(artworkColors: tintFromArtwork), onSeek: media.seek(to:))
                 HStack(spacing: 0) {
                     Button(action: media.toggleShuffle) {
-                        Image(systemName: "shuffle").frame(width: 28, height: 28)
+                        Image(systemName: "shuffle").frame(width: 32, height: 32)
                             .foregroundStyle(media.isShuffling ? Color.accentColor : .white.opacity(0.65))
                     }
                     .disabled(!media.canShuffle)
@@ -27,19 +27,19 @@ struct ExperimentalPlayer: View {
                     .accessibilityLabel("Shuffle")
                     .accessibilityValue(media.isShuffling ? "On" : "Off")
                     Spacer(minLength: 6)
-                    Button(action: media.previous) { Image(systemName: "backward.fill").frame(width: 28, height: 28) }
+                    Button(action: media.previous) { Image(systemName: "backward.fill").frame(width: 32, height: 32) }
                         .help("Previous track").accessibilityLabel("Previous track")
                     Spacer(minLength: 6)
                     Button(action: media.togglePlayPause) {
                         Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 18)).frame(width: 34, height: 28)
+                            .font(.system(size: 18)).frame(width: 36, height: 32)
                     }
                     .help(media.isPlaying ? "Pause" : "Play").accessibilityLabel(media.isPlaying ? "Pause" : "Play")
                     Spacer(minLength: 6)
-                    Button(action: media.next) { Image(systemName: "forward.fill").frame(width: 28, height: 28) }
+                    Button(action: media.next) { Image(systemName: "forward.fill").frame(width: 32, height: 32) }
                         .help("Next track").accessibilityLabel("Next track")
                     Spacer(minLength: 6)
-                    AirPlayPicker().frame(width: 28, height: 28).accessibilityLabel("AirPlay speakers and TVs")
+                    AirPlayPicker().frame(width: 32, height: 32).accessibilityLabel("AirPlay speakers and TVs")
                 }
                 .font(.system(size: 13))
                 .buttonStyle(IconButtonStyle())

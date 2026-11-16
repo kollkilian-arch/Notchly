@@ -27,18 +27,18 @@ struct ShelfView: View {
                     .disabled(!ShelfSharing.canShare(selected))
                 }
                 Button { shelf.paste(from: pasteboard) } label: {
-                    Label("Paste", systemImage: "doc.on.clipboard")
+                    Label("Paste", systemImage: "doc.on.clipboard").frame(minHeight: 28).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Paste files, links, text, or screenshots (⌘V)")
                 .accessibilityLabel("Paste into Shelf")
             }
             .font(.system(size: 10, weight: .medium))
-            .frame(height: 18)
+            .frame(height: 28)
 
             HStack(spacing: 12) {
                 storageArea
-                if experimental { AirDropDropZone(shelf: shelf).frame(width: 220) }
+                if experimental { AirDropDropZone(shelf: shelf).frame(width: 160) }
             }
         }
         .background(ShelfKeyboardInput(isActive: isActive, shelf: shelf, pasteboard: pasteboard))

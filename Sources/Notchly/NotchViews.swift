@@ -21,7 +21,7 @@ struct NotchRoot: View {
     @AppStorage(Pref.glassDashboard) private var glass = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var panelHeight: CGFloat { size.height - (state.isOpen && experimental ? 48 : 0) }
+    private var panelHeight: CGFloat { size.height - (state.isOpen && experimental ? 52 : 0) }
 
     private var showsClosedProgress: Bool {
         !state.isOpen && closedMusicProgress && state.activity.displayed == .music
@@ -52,7 +52,7 @@ struct NotchRoot: View {
                 .opacity(state.isOpen ? 0 : 1)
 
             OpenContent(state: state, media: media, battery: battery, calendar: calendar, shelf: shelf, usage: usage, timer: timer, scores: scores, audio: audio)
-                .frame(width: NotchState.openSize.width, height: NotchState.openSize.height - (experimental ? 48 : 0), alignment: .top)
+                .frame(width: NotchState.openSize.width, height: NotchState.openSize.height - (experimental ? 52 : 0), alignment: .top)
                 .opacity(state.isOpen ? 1 : 0)
                 .blur(radius: state.isOpen ? 0 : 8)
                 .allowsHitTesting(state.isOpen)
@@ -76,7 +76,7 @@ struct NotchRoot: View {
             panel
             if state.isOpen && experimental {
                 FloatingNavigation(state: state, shelf: shelf, usage: usage)
-                    .frame(height: 36)
+                    .frame(height: 40)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
