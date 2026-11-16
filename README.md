@@ -63,8 +63,10 @@ Switch it off under **Settings → Home → Show song progress around the closed
 Under **Settings → Notch → Fullscreen**, choose **Show normally**, **Dim** (the default,
 25% opacity), or **Hide** when an app or video fills the notch’s display. Opening a dimmed
 notch restores full opacity. Hide also disables hover, clicks and drops
-until fullscreen ends. Fullscreen detection uses window bounds; a maximized window with
-a hidden Dock can also match. Fullscreen on another display does not affect the notch.
+until fullscreen ends. Detection uses the native fullscreen Space on the notch’s display;
+maximized windows never trigger it, even with a hidden Dock. Borderless video modes that
+stay on the desktop do not trigger it. The Space query uses a private macOS interface;
+if unavailable, the notch stays visible.
 Choose and pin an activity, cycle between active ones, or let automatic priorities decide.
 The lock padlock and volume/brightness HUD take priority; important timer and meeting alerts briefly
 interrupt your chosen activity.

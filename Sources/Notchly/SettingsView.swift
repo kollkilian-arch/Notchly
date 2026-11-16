@@ -293,7 +293,7 @@ private struct NotchSettings: View {
             } header: {
                 Text("Fullscreen")
             } footer: {
-                Text("Applies to apps and video players on the notch’s display. Dim uses 25% opacity until you open the notch. Hide also disables hover, clicks and drops until fullscreen ends.")
+                Text("Applies to native fullscreen apps and videos on the notch’s display, including Split View. Maximized windows stay unchanged. Dim uses 25% opacity until you open the notch. Hide also disables hover, clicks and drops until fullscreen ends.")
             }
 
             Section("While the notch is closed") {

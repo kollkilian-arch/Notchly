@@ -22,36 +22,40 @@ enum FullscreenBehavior: String, CaseIterable {
 }
 
 enum FullscreenDetection {
-    /// WindowServer bounds are available without reading window titles or screen contents.
-    /// Inspect only the foremost normal window on the notch's display, so a fullscreen
-    /// player on another display does not dim the notch.
+    private typealias MainConnectionID = @convention(c) () -> Int32
+    private typealias CopyManagedDisplaySpaces = @convention(c) (Int32) -> Unmanaged<CFArray>?
+
+    // Like lock-screen support, this is a best-effort private SkyLight query. Resolve
+    // once and keep the framework loaded for the lifetime of its function pointers.
+    private static let skyLight = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+    private static let readSpaces: (() -> [[String: Any]]?)? = {
+        guard let handle = skyLight,
+              let mainSymbol = dlsym(handle, "SLSMainConnectionID"),
+              let copySymbol = dlsym(handle, "SLSCopyManagedDisplaySpaces") else { return nil }
+        let connection = unsafeBitCast(mainSymbol, to: MainConnectionID.self)
+        let copySpaces = unsafeBitCast(copySymbol, to: CopyManagedDisplaySpaces.self)
+        return { copySpaces(connection())?.takeRetainedValue() as? [[String: Any]] }
+    }()
+
     static func isFullscreen(on screen: NSScreen) -> Bool {
-        guard let primary = NSScreen.screens.first,
-              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                as? [[String: Any]] else { return false }
-        let frame = screen.frame
-        let display = CGRect(x: frame.minX, y: primary.frame.maxY - frame.maxY,
-                             width: frame.width, height: frame.height)
-        for window in windows {
-            guard let layer = window[kCGWindowLayer as String] as? Int, layer == 0,
-                  (window[kCGWindowAlpha as String] as? Double ?? 1) > 0,
-                  let dictionary = window[kCGWindowBounds as String] as? NSDictionary,
-                  let bounds = CGRect(dictionaryRepresentation: dictionary),
-                  bounds.intersection(display).width > 1,
-                  bounds.intersection(display).height > 1 else { continue }
-            return coversDisplay(bounds, display: display, topInset: screen.safeAreaInsets.top)
-        }
-        return false
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue(),
+              let displays = readSpaces?() else { return false }
+        let identifier = CFUUIDCreateString(nil, uuid) as String
+        return isFullscreen(displayID: identifier, displays: displays,
+                            separateSpaces: NSScreen.screensHaveSeparateSpaces)
     }
 
-    /// Fullscreen apps may leave the camera/menu strip black on notched displays.
-    /// A regular maximized window still leaves room for the Dock at the bottom.
-    static func coversDisplay(_ window: CGRect, display: CGRect, topInset: CGFloat) -> Bool {
-        let tolerance: CGFloat = 2
-        return abs(window.minX - display.minX) <= tolerance
-            && abs(window.maxX - display.maxX) <= tolerance
-            && window.minY >= display.minY - tolerance
-            && window.minY <= display.minY + topInset + tolerance
-            && abs(window.maxY - display.maxY) <= tolerance
+    /// Native fullscreen (including Split View) has Space type 4; maximized windows
+    /// remain in a desktop Space (type 0), regardless of their bounds or Dock settings.
+    /// Schema also used by https://github.com/Hammerspoon/hammerspoon/tree/master/extensions/spaces
+    static func isFullscreen(displayID: String, displays: [[String: Any]], separateSpaces: Bool = true) -> Bool {
+        guard let display = displays.first(where: {
+            guard let identifier = $0["Display Identifier"] as? String else { return false }
+            return identifier == displayID || (!separateSpaces && identifier == "Main")
+        }), let current = display["Current Space"] as? [String: Any],
+            let type = current["type"] as? Int else { return false }
+        // Never fall back to window bounds if the query is unavailable or unknown.
+        return type == 4
     }
 }

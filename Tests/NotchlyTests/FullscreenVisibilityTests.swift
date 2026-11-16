@@ -3,37 +3,48 @@ import XCTest
 @testable import Notchly
 
 final class FullscreenVisibilityTests: XCTestCase {
-    private let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
-
-    func testNativeAndBorderlessFullscreenCoverDisplay() {
-        XCTAssertTrue(FullscreenDetection.coversDisplay(display, display: display, topInset: 32))
-        XCTAssertTrue(FullscreenDetection.coversDisplay(
-            CGRect(x: 0, y: 32, width: 1512, height: 950), display: display, topInset: 32))
+    private func display(_ id: String = "notch", type: Int) -> [String: Any] {
+        ["Display Identifier": id, "Current Space": ["type": type, "ManagedSpaceID": 42]]
     }
 
-    func testMaximizedWindowWithDockAndRegularWindowDoNotMatch() {
-        XCTAssertFalse(FullscreenDetection.coversDisplay(
-            CGRect(x: 0, y: 32, width: 1512, height: 880), display: display, topInset: 32))
-        XCTAssertFalse(FullscreenDetection.coversDisplay(
-            CGRect(x: 200, y: 200, width: 800, height: 600), display: display, topInset: 32))
+    func testNativeFullscreenMatches() {
+        XCTAssertTrue(FullscreenDetection.isFullscreen(displayID: "notch", displays: [display(type: 4)]))
+    }
+
+    func testDesktopDoesNotMatchEvenWithMaximizedWindowAndHiddenDock() {
+        // Window geometry and Dock settings have no role in this decision.
+        XCTAssertFalse(FullscreenDetection.isFullscreen(displayID: "notch", displays: [display(type: 0)]))
     }
 
     func testFullscreenOnAnotherDisplayDoesNotMatch() {
-        let other = CGRect(x: -1920, y: -98, width: 1920, height: 1080)
-        XCTAssertFalse(FullscreenDetection.coversDisplay(other, display: display, topInset: 32))
-        XCTAssertTrue(FullscreenDetection.coversDisplay(other, display: other, topInset: 0))
+        XCTAssertFalse(FullscreenDetection.isFullscreen(displayID: "notch", displays: [
+            display("external", type: 4), display(type: 0)
+        ]))
+        XCTAssertTrue(FullscreenDetection.isFullscreen(displayID: "notch", displays: [
+            display("external", type: 0), display(type: 4)
+        ]))
     }
 
-    func testMenuStripAllowanceIsLimitedToNotchedDisplays() {
-        let belowMenu = CGRect(x: 0, y: 24, width: 1512, height: 958)
-        XCTAssertFalse(FullscreenDetection.coversDisplay(belowMenu, display: display, topInset: 0))
-        XCTAssertFalse(FullscreenDetection.coversDisplay(
-            CGRect(x: 0, y: 100, width: 1512, height: 882), display: display, topInset: 32))
+    func testInactiveFullscreenSpaceDoesNotMatch() {
+        var desktop = display(type: 0)
+        desktop["Spaces"] = [["type": 0], ["type": 4]]
+        XCTAssertFalse(FullscreenDetection.isFullscreen(displayID: "notch", displays: [desktop]))
     }
 
-    func testSpanningWindowDoesNotMatchFullscreen() {
-        XCTAssertFalse(FullscreenDetection.coversDisplay(
-            CGRect(x: -1920, y: 0, width: 3432, height: 982), display: display, topInset: 32))
+    func testUnavailableUnknownAndMalformedStateStayVisible() {
+        for displays: [[String: Any]] in [[], [display(type: 99)], [[:]],
+                                        [["Display Identifier": "notch"]],
+                                        [["Display Identifier": "notch", "Current Space": ["type": "4"]]],
+                                        [display("disconnected", type: 4)]] {
+            XCTAssertFalse(FullscreenDetection.isFullscreen(displayID: "notch", displays: displays))
+        }
+    }
+
+    func testSharedSpacesUseMainOnlyWhenSeparateSpacesAreDisabled() {
+        let main = [display("Main", type: 4)]
+        XCTAssertTrue(FullscreenDetection.isFullscreen(displayID: "notch", displays: main, separateSpaces: false))
+        XCTAssertFalse(FullscreenDetection.isFullscreen(displayID: "notch", displays: main, separateSpaces: true))
+        XCTAssertFalse(FullscreenDetection.isFullscreen(displayID: "notch", displays: [display("Main", type: 0)], separateSpaces: false))
     }
 
     func testDimRestoresOpacityOnlyWhileOpenAndHideStaysInvisible() {

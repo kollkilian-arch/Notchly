@@ -173,7 +173,7 @@ final class NotchController {
             .sink { [weak self] _ in self?.relayout() }
             .store(in: &cancellables)
 
-        // Poll for in-app video fullscreen as well as native fullscreen Spaces.
+        // Refresh native fullscreen Space state, including transitions within the active app.
         Timer.publish(every: 0.75, on: .main, in: .common).autoconnect()
             .sink { [weak self] _ in self?.refreshFullscreen() }
             .store(in: &cancellables)
