@@ -80,7 +80,7 @@ struct DashboardHome: View {
     @ObservedObject var audio: AudioMonitor
     @AppStorage(Pref.dashboardLayout) private var layoutJSON = ""
     @AppStorage(Pref.showCalendar) private var calendarEnabled = true
-    private var appearance = DashboardStyleReader()
+    var appearance = DashboardStyleReader()
 
     private var widgets: [DashboardWidget] {
         let visible = DashboardLayout.decode(layoutJSON).visible(calendarEnabled: calendarEnabled)
@@ -123,7 +123,7 @@ struct DashboardHome: View {
 
 struct LayoutEditorButton: View {
     @AppStorage(Pref.dashboardLayout) private var json = ""
-    private var appearance = DashboardStyleReader()
+    var appearance = DashboardStyleReader()
     @State private var showing = false
     @State private var token = UUID()
     private var layout: DashboardLayout { DashboardLayout.decode(json) }
@@ -181,7 +181,7 @@ struct FloatingNavigation: View {
     @ObservedObject var usage: UsageMonitor
     @AppStorage(Pref.scoresEnabled) private var scores = true
     @AppStorage(Pref.showUsage) private var showUsage = true
-    private var appearance = DashboardStyleReader()
+    var appearance = DashboardStyleReader()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {

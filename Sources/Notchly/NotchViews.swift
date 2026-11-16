@@ -18,7 +18,7 @@ struct NotchRoot: View {
     @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
 
     @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
-    private var appearance = DashboardStyleReader()
+    var appearance = DashboardStyleReader()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var panelHeight: CGFloat { size.height - (state.isOpen && experimental ? 52 : 0) }
