@@ -5,7 +5,8 @@ import Foundation
 /// they matter, so changes in the settings window apply immediately.
 enum Pref {
     static let useExperimentalBranch = "useExperimentalBranch"
-    static let glassDashboard = "glassDashboard"
+    static let glassDashboard = "glassDashboard" // Legacy preference, retained for migration.
+    static let dashboardStyle = "dashboardStyle"
     static let dashboardLayout = "dashboardLayout"
 
     // Updates

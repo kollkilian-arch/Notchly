@@ -6,7 +6,7 @@ import CoreAudio
 func renderExperimentalSnapshots(to dir: String) {
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     let defaults = UserDefaults.standard
-    let keys = [Pref.useExperimentalBranch, Pref.glassDashboard, Pref.dashboardLayout, Pref.showCalendar]
+    let keys = [Pref.useExperimentalBranch, Pref.glassDashboard, Pref.dashboardStyle, Pref.dashboardLayout, Pref.showCalendar]
     let domain = Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
     let persisted = defaults.persistentDomain(forName: domain) ?? [:]
     let saved = keys.map { persisted[$0] }
@@ -45,7 +45,8 @@ func renderExperimentalSnapshots(to dir: String) {
     var swapped = DashboardLayout(); swapped.move(.calendar, by: -1)
     var calendarOnly = DashboardLayout(); calendarOnly.setVisible(.music, false)
     let variants: [(String, Bool, Bool, String, NotchTab)] = [
-        ("glass-cards", true, true, "", .home),
+        ("hybrid-cards", true, true, "", .home),
+        ("liquid-glass", true, true, "", .home),
         ("black-cards", true, false, "", .home),
         ("calendar-empty", true, true, "", .home),
         ("calendar-first", true, true, swapped.json, .home),
@@ -65,6 +66,7 @@ func renderExperimentalSnapshots(to dir: String) {
     for (name, experimental, glass, layout, tab) in variants {
         defaults.set(experimental, forKey: Pref.useExperimentalBranch)
         defaults.set(glass, forKey: Pref.glassDashboard)
+        defaults.set(name == "liquid-glass" ? DashboardStyle.liquidGlass.rawValue : (glass ? DashboardStyle.hybrid.rawValue : DashboardStyle.black.rawValue), forKey: Pref.dashboardStyle)
         defaults.set(layout, forKey: Pref.dashboardLayout)
         calendar.selectDay(name == "calendar-empty" ? Calendar.current.date(byAdding: .day, value: 3, to: now)! : now)
         let state = NotchState(defaults: nil)
@@ -90,7 +92,8 @@ func renderExperimentalSnapshots(to dir: String) {
             .background(LinearGradient(colors: [Color(white: 0.35), Color(white: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing))
         capture(view, size: NSSize(width: 820, height: 350), dark: true, to: dir, name: name)
     }
-    capture(SettingsView(initialTab: .about), size: NSSize(width: 520, height: 530), dark: false,
+    defaults.set(true, forKey: Pref.useExperimentalBranch)
+    capture(SettingsView(initialTab: .notch), size: NSSize(width: 520, height: 530), dark: false,
             to: dir, name: "experimental-settings")
 }
 

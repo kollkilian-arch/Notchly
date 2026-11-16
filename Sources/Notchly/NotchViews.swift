@@ -18,7 +18,7 @@ struct NotchRoot: View {
     @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
 
     @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
-    @AppStorage(Pref.glassDashboard) private var glass = true
+    private var appearance = DashboardStyleReader()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var panelHeight: CGFloat { size.height - (state.isOpen && experimental ? 52 : 0) }
@@ -58,7 +58,7 @@ struct NotchRoot: View {
                 .allowsHitTesting(state.isOpen)
         }
         .frame(width: size.width, height: panelHeight, alignment: .top)
-        .background(GlassSurface(glass: state.isOpen && experimental && glass))
+        .background(GlassSurface(style: state.isOpen && experimental ? appearance.style : .black))
         .overlay {
             if showsClosedProgress, let track = media.track {
                 ClosedMusicProgress(position: media.position, duration: track.duration,

@@ -8,7 +8,7 @@ A native SwiftUI/AppKit app, in the spirit of Alcove and Dynamic Island apps.
 
 The `experimental` branch previews the next dashboard. It keeps the closed notch and music outline,
 then opens into glass cards with a separate floating navigation strip. Use the layout button in the
-header to move or hide Music and Calendar, or switch the glass surface to black. Layout changes persist.
+header to move or hide Music and Calendar. Under **Settings → Notch → Appearance**, choose Liquid Glass, Hybrid (glass with dark cards), or Black. Liquid Glass uses the system effect on macOS 26 when built with a compatible SDK, and a material fallback otherwise. Layout and style choices persist.
 The calendar keeps your selected day centred with fading neighbours and a large month label, supports
 two-finger horizontal trackpad swipes or click-and-drag between dates, and shows per-day events
 (including all-day events), meeting links, and event dots. The existing meeting reminder still follows

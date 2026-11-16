@@ -260,6 +260,8 @@ private struct AboutSettings: View {
 // MARK: - Notch
 
 private struct NotchSettings: View {
+    @AppStorage(Pref.useExperimentalBranch) private var experimental = UpdateChannel.current == .experimental
+    private var appearance = DashboardStyleReader()
     @AppStorage(Pref.fullscreenBehavior) private var fullscreenBehavior = FullscreenBehavior.dim.rawValue
     @AppStorage(Pref.openOnHover) private var openOnHover = true
     @AppStorage(Pref.hoverDelay) private var hoverDelay = 0.0
@@ -270,6 +272,19 @@ private struct NotchSettings: View {
 
     var body: some View {
         Form {
+            if experimental {
+                Section {
+                    Picker("Style", selection: appearance.selection) {
+                        ForEach(DashboardStyle.allCases, id: \.rawValue) { style in
+                            Text(style.title).tag(style.rawValue)
+                        }
+                    }
+                } header: {
+                    Text("Appearance")
+                } footer: {
+                    Text("Liquid Glass uses the system glass effect when available. Hybrid combines a glass background with dark cards.")
+                }
+            }
             Section {
                 Toggle("Open when hovering over the notch", isOn: $openOnHover)
                 if openOnHover {

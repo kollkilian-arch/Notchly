@@ -1,19 +1,64 @@
 import SwiftUI
 
+enum DashboardStyle: String, CaseIterable {
+    case liquidGlass, hybrid, black
+
+    var title: String {
+        switch self {
+        case .liquidGlass: return "Liquid Glass"
+        case .hybrid: return "Hybrid"
+        case .black: return "Black"
+        }
+    }
+
+    static func resolve(_ value: String, legacyGlass: Bool) -> DashboardStyle {
+        DashboardStyle(rawValue: value) ?? (legacyGlass ? .hybrid : .black)
+    }
+}
+
+/// Reads the old toggle until a style is explicitly selected.
+struct DashboardStyleReader: DynamicProperty {
+    @AppStorage(Pref.dashboardStyle) private var storedStyle = ""
+    @AppStorage(Pref.glassDashboard) private var legacyGlass = true
+
+    var style: DashboardStyle { DashboardStyle.resolve(storedStyle, legacyGlass: legacyGlass) }
+    var selection: Binding<String> {
+        Binding(get: { style.rawValue }, set: { storedStyle = $0 })
+    }
+}
+
 /// Public AppKit vibrancy; keeps a readable solid surface with Reduce Transparency enabled.
 struct GlassSurface: View {
-    var glass: Bool
+    var style: DashboardStyle
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         ZStack {
-            if glass && !reduceTransparency {
+            if style == .black || reduceTransparency {
+                Color.black
+            } else if style == .liquidGlass {
+                LiquidGlassSurface()
+            } else {
                 DesktopMaterial()
                 LinearGradient(colors: [.white.opacity(0.13), .white.opacity(0.025)],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 Color.black.opacity(0.22)
-            } else { Color.black }
+            }
         }
+    }
+}
+
+private struct LiquidGlassSurface: View {
+    var body: some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: .rect(cornerRadius: 18))
+        } else {
+            DesktopMaterial()
+        }
+        #else
+        DesktopMaterial()
+        #endif
     }
 }
 
@@ -35,6 +80,7 @@ struct DashboardHome: View {
     @ObservedObject var audio: AudioMonitor
     @AppStorage(Pref.dashboardLayout) private var layoutJSON = ""
     @AppStorage(Pref.showCalendar) private var calendarEnabled = true
+    private var appearance = DashboardStyleReader()
 
     private var widgets: [DashboardWidget] {
         let visible = DashboardLayout.decode(layoutJSON).visible(calendarEnabled: calendarEnabled)
@@ -62,7 +108,13 @@ struct DashboardHome: View {
                 }
                 .padding(11)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(RoundedRectangle(cornerRadius: 18).fill(.black.opacity(0.22)))
+                .background {
+                    if appearance.style == .liquidGlass {
+                        GlassSurface(style: .liquidGlass).clipShape(RoundedRectangle(cornerRadius: 18))
+                    } else {
+                        RoundedRectangle(cornerRadius: 18).fill(.black.opacity(appearance.style == .black ? 1 : 0.22))
+                    }
+                }
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.1)))
             }
         }
@@ -71,7 +123,7 @@ struct DashboardHome: View {
 
 struct LayoutEditorButton: View {
     @AppStorage(Pref.dashboardLayout) private var json = ""
-    @AppStorage(Pref.glassDashboard) private var glass = true
+    private var appearance = DashboardStyleReader()
     @State private var showing = false
     @State private var token = UUID()
     private var layout: DashboardLayout { DashboardLayout.decode(json) }
@@ -86,7 +138,11 @@ struct LayoutEditorButton: View {
         .popover(isPresented: $showing) {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Dashboard layout").font(.headline)
-                Toggle("Glass cards", isOn: $glass)
+                Picker("Style", selection: appearance.selection) {
+                    ForEach(DashboardStyle.allCases, id: \.rawValue) { style in
+                        Text(style.title).tag(style.rawValue)
+                    }
+                }
                 ForEach(Array(layout.order.enumerated()), id: \.element) { index, widget in
                     HStack {
                         Toggle(widget.title, isOn: Binding(
@@ -125,7 +181,7 @@ struct FloatingNavigation: View {
     @ObservedObject var usage: UsageMonitor
     @AppStorage(Pref.scoresEnabled) private var scores = true
     @AppStorage(Pref.showUsage) private var showUsage = true
-    @AppStorage(Pref.glassDashboard) private var glass = true
+    private var appearance = DashboardStyleReader()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -159,7 +215,7 @@ struct FloatingNavigation: View {
             }
         }
         .padding(4)
-        .background(GlassSurface(glass: glass))
+        .background(GlassSurface(style: appearance.style))
         .clipShape(Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.14)))
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: state.tab)
