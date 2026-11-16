@@ -51,15 +51,28 @@ final class SpotifyLibraryTests: XCTestCase {
                 XCTAssertEqual(components.path, "/v1/me/library/contains")
                 return (200, Data("[false]".utf8))
             }
-            XCTAssertEqual(request.httpMethod, "PUT")
+            XCTAssertTrue(["PUT", "DELETE"].contains(request.httpMethod ?? ""))
             XCTAssertEqual(components.path, "/v1/me/library")
             return (200, Data())
         }
         defer { SpotifyMockProtocol.handler = nil; session.invalidateAndCancel() }
         library.setTrack(Track(source: .spotify, title: "Song", artist: "Artist", album: "Album", duration: 1, artworkURL: nil, spotifyURI: uri))
         try await waitUntil { library.trackState == .unsaved }
-        library.saveCurrentTrack()
+        SpotifyMockProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "PUT")
+            XCTAssertEqual(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, self.uri)
+            return (200, Data())
+        }
+        library.toggleCurrentTrack()
         try await waitUntil { library.trackState == .saved }
+        SpotifyMockProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            XCTAssertEqual(request.url?.path, "/v1/me/library")
+            XCTAssertEqual(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, self.uri)
+            return (200, Data())
+        }
+        library.toggleCurrentTrack()
+        try await waitUntil { library.trackState == .unsaved }
         library.setTrack(Track(source: .music, title: "Song", artist: "Artist", album: "Album", duration: 1, artworkURL: nil))
         XCTAssertEqual(library.trackState, .unavailable)
     }
@@ -75,9 +88,37 @@ final class SpotifyLibraryTests: XCTestCase {
         defer { SpotifyMockProtocol.handler = nil; session.invalidateAndCancel() }
         library.setTrack(Track(source: .spotify, title: "Song", artist: "Artist", album: "Album", duration: 1, artworkURL: nil, spotifyURI: uri))
         try await waitUntil { library.trackState == .unsaved }
-        library.saveCurrentTrack()
+        library.toggleCurrentTrack()
         try await waitUntil { library.trackState == .failed }
         XCTAssertTrue(library.message?.contains("allowlist") == true)
+        library.toggleCurrentTrack()
+        try await waitUntil { library.trackState == .unsaved }
+    }
+
+    func testFailedRemovalRechecksBeforeAnotherChange() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SpotifyMockProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let library = SpotifyLibrary(testSession: session, accessToken: "token")
+        defer { SpotifyMockProtocol.handler = nil; session.invalidateAndCancel() }
+        SpotifyMockProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            return (200, Data("[true]".utf8))
+        }
+        library.setTrack(Track(source: .spotify, title: "Song", artist: "Artist", album: "Album", duration: 1, artworkURL: nil, spotifyURI: uri))
+        try await waitUntil { library.trackState == .saved }
+        SpotifyMockProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            return (403, Data())
+        }
+        library.toggleCurrentTrack()
+        try await waitUntil { library.trackState == .failed }
+        SpotifyMockProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            return (200, Data("[true]".utf8))
+        }
+        library.toggleCurrentTrack()
+        try await waitUntil { library.trackState == .saved }
     }
 
     private func waitUntil(_ predicate: () -> Bool) async throws {

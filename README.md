@@ -22,7 +22,7 @@ in the toolbar and context menu.
 The Music card has a native **AirPlay** discovery picker beside the playback controls. It discovers
 nearby speakers and TVs rather than relying on the already-connected Core Audio list. The output
 button in the card header selects ordinary Mac sound devices. Apple Music retains its shuffle control;
-Spotify shows a plus button to add the current track to Liked Songs.
+Spotify shows a plus button to add the current track to Liked Songs; click the checkmark to remove it.
 
 To connect Spotify, create an app at the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard),
 register `http://127.0.0.1:43871/callback` as a redirect URI, and enter its client ID under

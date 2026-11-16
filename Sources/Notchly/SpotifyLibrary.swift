@@ -11,7 +11,7 @@ final class SpotifyLibrary: ObservableObject {
     static let redirectURI = "http://127.0.0.1:43871/callback"
     private static let service = "app.notchly.spotify.library"
 
-    enum TrackState: Equatable { case unavailable, signedOut, checking, unsaved, saved, saving, failed }
+    enum TrackState: Equatable { case unavailable, signedOut, checking, unsaved, saved, saving, removing, failed }
     @Published private(set) var connected = false
     @Published private(set) var connecting = false
     @Published private(set) var trackState: TrackState = .signedOut
@@ -196,17 +196,22 @@ final class SpotifyLibrary: ObservableObject {
         }
     }
 
-    func saveCurrentTrack() {
-        guard let uri = currentURI, connected, trackState == .unsaved || trackState == .failed else { return }
+    func toggleCurrentTrack() {
+        guard let uri = currentURI, connected else { return }
+        // An error can leave the server state uncertain. Check again before another change.
+        if trackState == .failed { refreshCurrentTrack(); return }
+        guard trackState == .unsaved || trackState == .saved else { return }
+        let removing = trackState == .saved
         checkTask?.cancel()
         let request = UUID()
         requestID = request
-        trackState = .saving
+        trackState = removing ? .removing : .saving
+        message = nil
         Task {
             do {
-                _ = try await libraryRequest(path: "/v1/me/library", method: "PUT", uri: uri)
+                _ = try await libraryRequest(path: "/v1/me/library", method: removing ? "DELETE" : "PUT", uri: uri)
                 guard requestID == request else { return }
-                trackState = .saved
+                trackState = removing ? .unsaved : .saved
                 message = nil
             } catch {
                 guard requestID == request else { return }

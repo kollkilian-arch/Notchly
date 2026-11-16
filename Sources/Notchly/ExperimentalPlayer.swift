@@ -22,10 +22,10 @@ struct ExperimentalPlayer: View {
                     if track.source == .spotify {
                         Button {
                             if !spotify.connected { SettingsWindowController.shared.show(tab: .home) }
-                            else { spotify.saveCurrentTrack() }
+                            else { spotify.toggleCurrentTrack() }
                         } label: {
                             Group {
-                                if spotify.trackState == .checking || spotify.trackState == .saving {
+                                if spotify.trackState == .checking || spotify.trackState == .saving || spotify.trackState == .removing {
                                     ProgressView().controlSize(.small)
                                 } else {
                                     Image(systemName: spotify.trackState == .saved ? "checkmark.circle.fill" : "plus.circle")
@@ -34,7 +34,7 @@ struct ExperimentalPlayer: View {
                             }
                             .frame(width: 32, height: 32)
                         }
-                        .disabled(spotify.trackState == .unavailable || spotify.trackState == .checking || spotify.trackState == .saving || spotify.trackState == .saved)
+                        .disabled(spotify.trackState == .unavailable || spotify.trackState == .checking || spotify.trackState == .saving || spotify.trackState == .removing)
                         .help(spotifyHelp)
                         .accessibilityLabel(spotifyHelp)
                     } else {
@@ -74,9 +74,10 @@ struct ExperimentalPlayer: View {
         case .signedOut: return "Connect Spotify in Settings to save songs"
         case .checking: return "Checking Liked Songs"
         case .unsaved: return "Add to Liked Songs"
-        case .saved: return "Already in Liked Songs"
+        case .saved: return "Remove from Liked Songs"
         case .saving: return "Adding to Liked Songs"
-        case .failed: return spotify.message ?? "Couldn't check Liked Songs. Click to retry saving."
+        case .removing: return "Removing from Liked Songs"
+        case .failed: return (spotify.message ?? "Couldn't update Liked Songs.") + " Click to check again."
         }
     }
 }
