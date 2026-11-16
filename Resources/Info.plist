@@ -13,9 +13,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.5.0-experimental.11</string>
-	<key>NotchlyUpdateChannel</key>
-	<string>experimental</string>
+	<string>0.5.0-experimental.12</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
@@ -30,5 +28,7 @@
 	<string>Notchly shows your next calendar events in the notch.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NotchlyUpdateChannel</key>
+	<string>experimental</string>
 </dict>
 </plist>

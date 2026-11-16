@@ -60,7 +60,17 @@ struct ExperimentalPlayer: View {
                     Button(action: media.next) { Image(systemName: "forward.fill").frame(width: 32, height: 32) }
                         .help("Next track").accessibilityLabel("Next track")
                     Spacer(minLength: 6)
-                    AirPlayPicker().frame(width: 32, height: 32).accessibilityLabel("AirPlay speakers and TVs")
+                    if track.source == .music {
+                        MusicAirPlayButton()
+                    } else {
+                        Button {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!)
+                        } label: {
+                            Image(systemName: "airplay.audio").frame(width: 32, height: 32)
+                        }
+                        .help("Choose an AirPlay output in macOS Sound Settings")
+                        .accessibilityLabel("Open macOS Sound Settings for AirPlay")
+                    }
                 }
                 .font(.system(size: 13))
                 .buttonStyle(IconButtonStyle())

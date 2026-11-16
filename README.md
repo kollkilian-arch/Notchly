@@ -19,10 +19,11 @@ AirDrop to choose a recipient without storing it. Multiple files share in one ch
 text and image assets are removed after sharing or cancellation. Stored items also have **AirDrop**
 in the toolbar and context menu.
 
-The Music card has a native **AirPlay** discovery picker beside the playback controls. It discovers
-nearby speakers and TVs rather than relying on the already-connected Core Audio list. The output
-button in the card header selects ordinary Mac sound devices. Apple Music retains its shuffle control;
-Spotify shows a plus button to add the current track to Liked Songs; click the checkmark to remove it.
+The Music card controls Apple Music’s own AirPlay speakers beside the playback controls. For
+passcode-protected speakers, use Music’s AirPlay picker. When Spotify is playing, the AirPlay button
+opens macOS Sound Settings to select a system output. The output button in the card header also
+selects connected Mac sound devices. Apple Music retains its shuffle control; Spotify shows a plus
+button to add the current track to Liked Songs; click the checkmark to remove it.
 
 To connect Spotify, create an app at the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard),
 register `http://127.0.0.1:43871/callback` as a redirect URI, and enter its client ID under
