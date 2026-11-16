@@ -19,10 +19,18 @@ AirDrop to choose a recipient without storing it. Multiple files share in one ch
 text and image assets are removed after sharing or cancellation. Stored items also have **AirDrop**
 in the toolbar and context menu.
 
-The Music card has shuffle and a native **AirPlay** discovery picker beside the playback controls.
-It discovers nearby speakers and TVs rather than relying on the already-connected Core Audio list.
-The output button in the card header still selects ordinary Mac sound devices. Shuffle reflects the
-player’s actual state and is disabled where the player reports that it is unavailable.
+The Music card has a native **AirPlay** discovery picker beside the playback controls. It discovers
+nearby speakers and TVs rather than relying on the already-connected Core Audio list. The output
+button in the card header selects ordinary Mac sound devices. Apple Music retains its shuffle control;
+Spotify shows a plus button to add the current track to Liked Songs.
+
+To connect Spotify, create an app at the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard),
+register `http://127.0.0.1:43871/callback` as a redirect URI, and enter its client ID under
+**Settings → Home → Spotify Liked Songs**. Click **Connect Spotify** and authorize library access in
+your browser. Notchly stores the refresh token in macOS Keychain. You can disconnect in the same
+settings section. Tracks already in Liked Songs show a checkmark; local tracks and episodes cannot be
+saved by this control. Spotify development-mode apps require the app owner to have Premium and only
+allow explicitly listed users; see [Spotify's quota-mode documentation](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 Spotify Connect remains in Spotify.
 
 **Settings → About → Use experimental branch** selects stable or experimental updates. In an

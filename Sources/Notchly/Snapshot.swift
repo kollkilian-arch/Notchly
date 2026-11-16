@@ -44,7 +44,7 @@ func renderExperimentalSnapshots(to dir: String) {
     let emptyShelf = ShelfStore(storeURL: URL(fileURLWithPath: dir).appendingPathComponent("preview-empty-shelf.json"))
     var swapped = DashboardLayout(); swapped.move(.calendar, by: -1)
     var calendarOnly = DashboardLayout(); calendarOnly.setVisible(.music, false)
-    let variants: [(String, Bool, Bool, String, NotchTab)] = [
+    var variants: [(String, Bool, Bool, String, NotchTab)] = [
         ("hybrid-cards", true, true, "", .home),
         ("liquid-glass", true, true, "", .home),
         ("black-cards", true, false, "", .home),
@@ -63,10 +63,15 @@ func renderExperimentalSnapshots(to dir: String) {
         ("usage-limits", true, true, "", .usage),
         ("classic", false, false, "", .home),
     ]
+    for style in DashboardStyle.allCases {
+        for tab in NotchTab.allCases {
+            variants.append(("matrix-\(style.rawValue)-\(tab)", true, style != .black, "", tab))
+        }
+    }
     for (name, experimental, glass, layout, tab) in variants {
         defaults.set(experimental, forKey: Pref.useExperimentalBranch)
         defaults.set(glass, forKey: Pref.glassDashboard)
-        defaults.set(name == "liquid-glass" ? DashboardStyle.liquidGlass.rawValue : (glass ? DashboardStyle.hybrid.rawValue : DashboardStyle.black.rawValue), forKey: Pref.dashboardStyle)
+        defaults.set(name.hasPrefix("matrix-") ? String(name.split(separator: "-")[1]) : (name == "liquid-glass" ? DashboardStyle.liquidGlass.rawValue : (glass ? DashboardStyle.hybrid.rawValue : DashboardStyle.black.rawValue)), forKey: Pref.dashboardStyle)
         defaults.set(layout, forKey: Pref.dashboardLayout)
         calendar.selectDay(name == "calendar-empty" ? Calendar.current.date(byAdding: .day, value: 3, to: now)! : now)
         let state = NotchState(defaults: nil)
@@ -87,7 +92,7 @@ func renderExperimentalSnapshots(to dir: String) {
         let view = NotchRoot(state: state, media: media, battery: BatteryMonitor(previewLevel: 82),
                              calendar: calendar, hud: HUDMonitor(preview: nil), shelf: name == "shelf-empty" ? emptyShelf : shelf,
                              usage: UsageMonitor(preview: usageState), timer: TimerModel(preview: timerPhase, total: 600, remaining: 420),
-                             lock: LockMonitor(preview: .unlocked), scores: ScoresMonitor(preview: name == "scores-many" ? games : [], live: nil), audio: audio)
+                             lock: LockMonitor(preview: .unlocked), scores: ScoresMonitor(preview: (name == "scores-many" || name.hasSuffix("-scores")) ? games : [], live: nil), audio: audio)
             .frame(width: 820, height: 350)
             .background(LinearGradient(colors: [Color(white: 0.35), Color(white: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing))
         capture(view, size: NSSize(width: 820, height: 350), dark: true, to: dir, name: name)
@@ -95,6 +100,8 @@ func renderExperimentalSnapshots(to dir: String) {
     defaults.set(true, forKey: Pref.useExperimentalBranch)
     capture(SettingsView(initialTab: .notch), size: NSSize(width: 520, height: 530), dark: false,
             to: dir, name: "experimental-settings")
+    capture(SettingsView(initialTab: .home), size: NSSize(width: 520, height: 530), dark: false,
+            to: dir, name: "spotify-settings")
 }
 
 /// Debug helper: `Notchly --snapshot <dir>` renders the notch views to PNGs and exits.

@@ -13,6 +13,7 @@ struct NotchRoot: View {
     @ObservedObject var lock: LockMonitor
     @ObservedObject var scores: ScoresMonitor
     @ObservedObject var audio: AudioMonitor
+    @ObservedObject private var spotifyLibrary = SpotifyLibrary.shared
 
     @AppStorage(Pref.closedMusicProgress) private var closedMusicProgress = true
     @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
@@ -86,9 +87,11 @@ struct NotchRoot: View {
         .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.78), value: state.isOpen)
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: state.activity.displayed)
         .onAppear {
+            spotifyLibrary.setTrack(media.track)
             state.updateActivities(activityInputs)
             media.setPositionTracking(tracksPosition)
         }
+        .onReceive(media.$track) { spotifyLibrary.setTrack($0) }
         .onChange(of: state.isOpen) { _, open in
             if !open { NotificationCenter.default.post(name: NotchInteraction.dismiss, object: nil) }
         }

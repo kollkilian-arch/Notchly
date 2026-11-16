@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ExperimentalPlayer: View {
     @ObservedObject var media: MediaMonitor
+    @ObservedObject private var spotify = SpotifyLibrary.shared
     @AppStorage(Pref.tintFromArtwork) private var tintFromArtwork = true
 
     var body: some View {
@@ -18,14 +19,34 @@ struct ExperimentalPlayer: View {
                 ProgressRow(position: media.position, duration: track.duration,
                             tint: media.tint(artworkColors: tintFromArtwork), onSeek: media.seek(to:))
                 HStack(spacing: 0) {
-                    Button(action: media.toggleShuffle) {
-                        Image(systemName: "shuffle").frame(width: 32, height: 32)
-                            .foregroundStyle(media.isShuffling ? Color.accentColor : .white.opacity(0.65))
+                    if track.source == .spotify {
+                        Button {
+                            if !spotify.connected { SettingsWindowController.shared.show(tab: .home) }
+                            else { spotify.saveCurrentTrack() }
+                        } label: {
+                            Group {
+                                if spotify.trackState == .checking || spotify.trackState == .saving {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: spotify.trackState == .saved ? "checkmark.circle.fill" : "plus.circle")
+                                        .foregroundStyle(spotify.trackState == .saved ? Color.green : .white.opacity(0.8))
+                                }
+                            }
+                            .frame(width: 32, height: 32)
+                        }
+                        .disabled(spotify.trackState == .unavailable || spotify.trackState == .checking || spotify.trackState == .saving || spotify.trackState == .saved)
+                        .help(spotifyHelp)
+                        .accessibilityLabel(spotifyHelp)
+                    } else {
+                        Button(action: media.toggleShuffle) {
+                            Image(systemName: "shuffle").frame(width: 32, height: 32)
+                                .foregroundStyle(media.isShuffling ? Color.accentColor : .white.opacity(0.65))
+                        }
+                        .disabled(!media.canShuffle)
+                        .help("Shuffle")
+                        .accessibilityLabel("Shuffle")
+                        .accessibilityValue(media.isShuffling ? "On" : "Off")
                     }
-                    .disabled(!media.canShuffle)
-                    .help(media.canShuffle ? "Turn shuffle \(media.isShuffling ? "off" : "on")" : "Shuffle is unavailable for this playback context")
-                    .accessibilityLabel("Shuffle")
-                    .accessibilityValue(media.isShuffling ? "On" : "Off")
                     Spacer(minLength: 6)
                     Button(action: media.previous) { Image(systemName: "backward.fill").frame(width: 32, height: 32) }
                         .help("Previous track").accessibilityLabel("Previous track")
@@ -45,5 +66,17 @@ struct ExperimentalPlayer: View {
                 .buttonStyle(IconButtonStyle())
             }
         } else { NowPlayingView(media: media) }
+    }
+
+    private var spotifyHelp: String {
+        switch spotify.trackState {
+        case .unavailable: return "This Spotify item can't be added to Liked Songs"
+        case .signedOut: return "Connect Spotify in Settings to save songs"
+        case .checking: return "Checking Liked Songs"
+        case .unsaved: return "Add to Liked Songs"
+        case .saved: return "Already in Liked Songs"
+        case .saving: return "Adding to Liked Songs"
+        case .failed: return spotify.message ?? "Couldn't check Liked Songs. Click to retry saving."
+        }
     }
 }

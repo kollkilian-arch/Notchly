@@ -31,6 +31,7 @@ enum Pref {
     static let showAudioActivity = "showAudioActivity"
 
     // Home tab
+    static let spotifyClientID = "spotifyClientID"
     static let enableSpotify = "enableSpotify"
     static let enableMusic = "enableMusic"
     static let showCalendar = "showCalendar"

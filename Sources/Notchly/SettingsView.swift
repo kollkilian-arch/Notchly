@@ -467,6 +467,8 @@ private struct ScoresSettings: View {
 // MARK: - Home
 
 private struct HomeSettings: View {
+    @ObservedObject private var spotifyLibrary = SpotifyLibrary.shared
+    @AppStorage(Pref.spotifyClientID) private var spotifyClientID = ""
     @AppStorage(Pref.enableSpotify) private var spotify = true
     @AppStorage(Pref.enableMusic) private var music = true
     @AppStorage(Pref.tintFromArtwork) private var tint = true
@@ -487,6 +489,33 @@ private struct HomeSettings: View {
                 Text("Now Playing sources")
             } footer: {
                 Text("Notchly shows whichever enabled player is currently playing.")
+            }
+
+            Section {
+                TextField("Spotify client ID", text: $spotifyClientID)
+                    .disabled(spotifyLibrary.connected || spotifyLibrary.connecting)
+                HStack {
+                    Text(spotifyLibrary.connected ? "Spotify connected" : (spotifyLibrary.connecting ? "Waiting for Spotify sign-in…" : "Spotify not connected"))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if spotifyLibrary.connected || spotifyLibrary.connecting {
+                        Button(spotifyLibrary.connecting ? "Cancel" : "Disconnect") { spotifyLibrary.disconnect() }
+                    } else {
+                        Button("Connect Spotify") { spotifyLibrary.connect(clientID: spotifyClientID) }
+                            .disabled(spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+                if let message = spotifyLibrary.message {
+                    Text(message).font(.caption).foregroundStyle(.orange)
+                }
+            } header: {
+                Text("Spotify Liked Songs")
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Create a Spotify developer app and add this redirect URI exactly:")
+                    Text(SpotifyLibrary.redirectURI).textSelection(.enabled)
+                    Link("Open Spotify Developer Dashboard", destination: URL(string: "https://developer.spotify.com/dashboard")!)
+                }
             }
 
             Section {

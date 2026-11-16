@@ -15,6 +15,7 @@ struct Track: Equatable {
     var album: String
     var duration: Double
     var artworkURL: String?
+    var spotifyURI: String? = nil
 
     var key: String { "\(source.rawValue)|\(title)|\(artist)|\(album)" }
 }
@@ -363,7 +364,7 @@ final class MediaMonitor: NSObject, ObservableObject {
             tell application "Spotify"
                 if player state is stopped then return ""
                 set t to current track
-                return (player state as text) & "||" & (name of t) & "||" & (artist of t) & "||" & (album of t) & "||" & (player position as text) & "||" & ((duration of t) as text) & "||" & (artwork url of t) & "||" & (shuffling as text) & "||" & (shuffling enabled as text)
+                return (player state as text) & "||" & (name of t) & "||" & (artist of t) & "||" & (album of t) & "||" & (player position as text) & "||" & ((duration of t) as text) & "||" & (artwork url of t) & "||" & (shuffling as text) & "||" & (shuffling enabled as text) & "||" & (id of t)
             end tell
             """
         case .music:
@@ -387,7 +388,8 @@ final class MediaMonitor: NSObject, ObservableObject {
         let duration = source == .spotify ? rawDuration / 1000 : rawDuration
         let track = Track(
             source: source, title: f[1], artist: f[2], album: f[3], duration: duration,
-            artworkURL: f.count > 6 && !f[6].isEmpty ? f[6] : nil
+            artworkURL: f.count > 6 && !f[6].isEmpty ? f[6] : nil,
+            spotifyURI: source == .spotify && f.count > 9 ? f[9] : nil
         )
         return Snapshot(track: track, playing: f[0] == "playing", position: number(f[4]),
                         shuffling: f.count > 7 && f[7] == "true", canShuffle: f.count > 8 && f[8] == "true")
