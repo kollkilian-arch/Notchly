@@ -21,6 +21,24 @@ struct ShelfItem: Identifiable, Equatable {
 
     var detail: String { kind == .text ? (text ?? name) : url.absoluteString }
 
+    /// Shelf-owned assets use UUIDs internally; never expose those as suggested names.
+    var suggestedBaseName: String {
+        switch kind {
+        case .text: return "Text snippet"
+        case .image: return "Pasted image"
+        case .file: return url.deletingPathExtension().lastPathComponent
+        case .link: return name
+        }
+    }
+
+    var suggestedArchiveName: String {
+        switch kind {
+        case .text: return "Text snippet.txt.zip"
+        case .image: return "Pasted image.png.zip"
+        case .file, .link: return url.lastPathComponent + ".zip"
+        }
+    }
+
     func dragProvider() -> NSItemProvider {
         if kind == .text { return NSItemProvider(object: (text ?? "") as NSString) }
         return NSItemProvider(object: url as NSURL)
@@ -45,6 +63,22 @@ final class ShelfStore: ObservableObject {
     @Published private(set) var items: [ShelfItem] = []
     @Published var selectedID: UUID?
     @Published var errorMessage: String?
+    @Published private(set) var activeConversions = 0
+    @Published private(set) var lastConversionID: UUID?
+
+    func conversionStarted() {
+        activeConversions += 1
+        lastConversionID = nil
+    }
+
+    func conversionFinished(destination: URL?, error: String? = nil) {
+        activeConversions = max(0, activeConversions - 1)
+        if let error { errorMessage = error }
+        if let destination {
+            add([destination])
+            lastConversionID = items.first(where: { $0.url.standardizedFileURL == destination.standardizedFileURL })?.id
+        }
+    }
 
     var selectedItem: ShelfItem? { items.first { $0.id == selectedID } }
 

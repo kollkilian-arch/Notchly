@@ -97,6 +97,17 @@ other items across launches. Original files remain references; pasted images and
 saved locally in `~/Library/Application Support/Notchly/shelf.assets/`. Removing a Shelf item never
 deletes an original file.
 
+Select a Shelf item and choose **Convert & Edit** to see its available actions. You can also right-click
+the item to find the same menu. Convert a single-frame image to PNG, JPEG, TIFF, GIF,
+HEIC, BMP, and other formats available on your Mac. **Convert File** offers TXT/RTF conversion,
+M4A audio export, and MP4/MOV video export for supported inputs. **Compress to ZIP** works on files
+and folders. These operations run locally, preserve the original, and add the result to the Shelf.
+Image conversion supports single-frame images; media codec support depends on macOS.
+
+The menu can also resize images to 50% or 25%, compress them as JPEG, rotate PDF pages,
+extract text from text-based PDFs, convert basic SRT/WebVTT subtitles, and convert UTF-8 CSV/TSV
+files. PDF text extraction does not perform OCR; subtitle files with unsupported settings are rejected.
+
 ### Keyboard
 
 Click anywhere inside the open notch to give it the keyboard (hovering never takes it from the app you

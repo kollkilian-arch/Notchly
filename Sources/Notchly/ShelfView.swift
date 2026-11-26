@@ -12,12 +12,30 @@ struct ShelfView: View {
     var body: some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
-                Text(shelf.items.isEmpty ? "Your shelf" : "\(shelf.items.count) items")
-                    .foregroundStyle(.white.opacity(0.55))
-                Spacer()
-                if !shelf.items.isEmpty {       // nothing to preview or open yet
-                    Text("Space to preview · double-click to open")
-                        .foregroundStyle(.white.opacity(0.4))
+                if shelf.activeConversions > 0 {
+                    ProgressView().controlSize(.mini).scaleEffect(0.75).frame(width: 12, height: 12)
+                    Text(shelf.activeConversions == 1 ? "Processing…" : "Processing \(shelf.activeConversions) files…")
+                        .foregroundStyle(.white.opacity(0.65))
+                } else if let selected = shelf.selectedItem, selected.id == shelf.lastConversionID {
+                    Label("Saved", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green.opacity(0.9))
+                        .help("Saved \(selected.name) and added it to the Shelf")
+                } else {
+                    Text(shelf.items.isEmpty ? "Your shelf" : (shelf.items.count == 1 ? "1 item" : "\(shelf.items.count) items"))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+                Spacer(minLength: 4)
+                if let selected = shelf.selectedItem, ShelfActions.available(for: selected) {
+                    Menu {
+                        ShelfActions(item: selected, shelf: shelf)
+                    } label: {
+                        Label("Convert & Edit", systemImage: "slider.horizontal.3")
+                            .frame(minHeight: 28).contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Convert or edit \(selected.name)")
+                    .accessibilityLabel("Convert or edit \(selected.name)")
                 }
                 if experimental, let selected = shelf.selectedItem {
                     Button {
@@ -63,7 +81,7 @@ struct ShelfView: View {
                     Image(systemName: "tray.and.arrow.down.fill").font(.system(size: 24))
                         .frame(width: 24, height: 24)
                     Text("Drop files, links, or text here").font(.system(size: 12, weight: .semibold))
-                    Text("Or paste a screenshot with ⌘V")
+                    Text("Select a file to convert or edit it · ⌘V to paste")
                         .font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
                 }
                 .multilineTextAlignment(.center)
@@ -182,6 +200,9 @@ struct ShelfTile: View {
         Button("Preview") { ShelfPreview.shared.show(item) }
         Button("Open") { NSWorkspace.shared.open(item.url) }
         Button("Copy") { item.copy() }
+        if ShelfActions.available(for: item) {
+            Menu("Convert & Edit") { ShelfActions(item: item, shelf: shelf) }
+        }
         if experimental {
             Button("Share via AirDrop…") {
                 ShelfSharing.shared.share(item) { shelf.errorMessage = $0 }
@@ -227,6 +248,48 @@ struct ShelfTile: View {
         )
         if let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) {
             thumbnail = rep.nsImage
+        }
+    }
+}
+
+/// Shared by the visible toolbar and the tile's contextual menu.
+struct ShelfActions: View {
+    let item: ShelfItem
+    @ObservedObject var shelf: ShelfStore
+
+    static func available(for item: ShelfItem) -> Bool {
+        item.kind == .file || item.kind == .image || item.kind == .text
+    }
+
+    var body: some View {
+        if FileConverter.canConvert(item) {
+            Menu("Convert Image") {
+                ForEach(FileConverter.formats) { format in
+                    Button(format.name + "…") { FileConverter.convert(item, to: format, shelf: shelf) }
+                }
+            }
+        }
+        let formats = MoreFileConversions.formats(for: item)
+        if !formats.isEmpty {
+            Section("Convert File") {
+                ForEach(formats) { format in
+                    Button(format.label + "…") { MoreFileConversions.convert(item, to: format, shelf: shelf) }
+                }
+            }
+        }
+        let tools = ShelfFileTools.tools(for: item)
+        if tools.contains(.resizeHalf) {
+            Menu("Resize Image") {
+                ForEach([ShelfFileTools.Tool.resizeHalf, .resizeQuarter], id: \.self) { tool in
+                    Button(tool.title) { ShelfFileTools.run(tool, item: item, shelf: shelf) }
+                }
+            }
+        }
+        ForEach(tools.filter { $0 != .resizeHalf && $0 != .resizeQuarter }, id: \.self) { tool in
+            Button(tool.title) { ShelfFileTools.run(tool, item: item, shelf: shelf) }
+        }
+        Section {
+            Button("Compress to ZIP…") { MoreFileConversions.compress(item, shelf: shelf) }
         }
     }
 }
